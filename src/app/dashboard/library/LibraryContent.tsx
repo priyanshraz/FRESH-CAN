@@ -658,6 +658,42 @@ function ImageCard({ item, isLatest, isNew, isHighlighted }: { item: ImageLibrar
   )
 }
 
+// ─── Blog hero image ─────────────────────────────────────────────────────────
+
+function BlogHero({ title, outputData }: { title: string; outputData: Record<string, unknown> | null }) {
+  const [visible, setVisible] = useState(false)
+  const [errored, setErrored] = useState(false)
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const od = outputData as any
+  const raw = od?.image_url ?? od?.hero_image ?? od?.featured_image ?? od?.cover_image ?? null
+  const heroUrl = typeof raw === 'string' && raw.startsWith('http') ? raw : null
+
+  useEffect(() => { setVisible(false); setErrored(false) }, [heroUrl])
+
+  if (!heroUrl || errored) return null
+
+  return (
+    <div className="relative h-52 w-full shrink-0 overflow-hidden bg-gray-100">
+      <img
+        src={heroUrl}
+        alt={title}
+        className={`h-full w-full object-cover transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        onLoad={() => setVisible(true)}
+        onError={() => setErrored(true)}
+      />
+      {visible && (
+        <>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-5">
+            <h2 className="text-xl font-bold leading-snug text-white">{title}</h2>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Blog content renderer ────────────────────────────────────────────────────
 
 function renderInline(text: string): React.ReactNode[] {
@@ -826,31 +862,11 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
         <Dialog open={readOpen} onOpenChange={(v) => setReadOpen(v)}>
           <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden max-h-[92vh] flex flex-col">
             {/* Hero image */}
-            {(() => {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const od = item.output_data as any
-              const heroUrl = od?.image_url ?? od?.hero_image ?? od?.featured_image ?? od?.cover_image ?? null
-              return heroUrl ? (
-                <div className="relative h-52 w-full shrink-0 overflow-hidden bg-gray-100">
-                  <img src={heroUrl} alt={title} className="h-full w-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-5">
-                    <h2 className="text-xl font-bold leading-snug text-white text-wrap-balance">{title}</h2>
-                  </div>
-                </div>
-              ) : null
-            })()}
+            <BlogHero title={title} outputData={item.output_data} />
 
-            {/* Header (no hero) or meta row */}
+            {/* Header meta row */}
             <div className="shrink-0 border-b px-6 py-4">
-              {(() => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const od = item.output_data as any
-                const heroUrl = od?.image_url ?? od?.hero_image ?? od?.featured_image ?? od?.cover_image ?? null
-                return !heroUrl ? (
-                  <h2 className="text-xl font-bold leading-snug text-gray-900 mb-2">{title}</h2>
-                ) : null
-              })()}
+              <h2 className="text-xl font-bold leading-snug text-gray-900 mb-2">{title}</h2>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                 <span className="font-medium text-gray-700">{item.category}</span>
                 <span className="text-gray-300">·</span>
