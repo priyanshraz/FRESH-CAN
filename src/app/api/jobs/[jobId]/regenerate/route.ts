@@ -93,7 +93,7 @@ export async function POST(
       payload.video_duration = String(videoData?.script_config?.total_duration ?? '36')
     }
 
-    const secret = process.env.N8N_WEBHOOK_SECRET ?? 'freshcan_n8n_secret_2026'
+    const secret = process.env.N8N_WEBHOOK_SECRET ?? ''
     fetch(webhookUrl, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'x-n8n-secret': secret },
