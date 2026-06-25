@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -1158,7 +1158,7 @@ function GenerationTracker({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function LibraryPage() {
+function LibraryContent() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const section   = searchParams.get('section') ?? 'videos'
@@ -1221,5 +1221,13 @@ export default function LibraryPage() {
         <TabsContent value="blogs"><BlogSection /></TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+export default function LibraryPage() {
+  return (
+    <Suspense>
+      <LibraryContent />
+    </Suspense>
   )
 }
