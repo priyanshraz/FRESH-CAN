@@ -1,0 +1,1223 @@
+'use client'
+
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import TopBar from '@/components/layout/TopBar'
+import { supabase } from '@/lib/supabase'
+import {
+  getVideoLibrary,
+  getImageLibrary,
+  getBlogLibrary,
+} from '@/services/contentService'
+import type {
+  VideoLibraryItem,
+  ImageLibraryItem,
+  BlogLibraryItem,
+  ContentType,
+  PlatformType,
+} from '@/types/content'
+import { formatDateTime } from '@/lib/dateUtils'
+import {
+  AlertCircle,
+  ArrowUpDown,
+  BookOpen,
+  CheckCircle2,
+  Clock,
+  Download,
+  ExternalLink,
+  FileText,
+  FileVideo,
+  Image as ImageIcon,
+  Loader2,
+  Play,
+  RefreshCw,
+  Search,
+  Send,
+  Share2,
+  Sparkles,
+  Tag,
+} from 'lucide-react'
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const CATEGORIES = [
+  'Food Desert Education',
+  'AI & Mobile Technology',
+  'Community Impact',
+  'Customer Stories',
+  'Behind the Mobile Unit',
+  'How FreshCAN Works',
+  'Fresh Produce & Local Farms',
+] as const
+
+const PLATFORM_OPTIONS: { id: PlatformType; label: string }[] = [
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'facebook',  label: 'Facebook'  },
+  { id: 'twitter',   label: 'X / Twitter' },
+]
+
+// ─── PostModal ────────────────────────────────────────────────────────────────
+
+interface PostTarget {
+  job_id: string
+  topic: string
+  content_type: ContentType
+  media_url: string | null
+  media_type: 'video' | 'image' | 'blog'
+  prefill_caption?: string
+  prefill_hashtags?: string
+}
+
+function PostModal({
+  target,
+  open,
+  onClose,
+}: {
+  target: PostTarget
+  open: boolean
+  onClose: () => void
+}) {
+  const [platforms, setPlatforms] = useState<PlatformType[]>(['instagram'])
+  const [caption, setCaption]     = useState('')
+  const [hashtags, setHashtags]   = useState('')
+  const [phase, setPhase]         = useState<'idle' | 'posting' | 'success' | 'error'>('idle')
+  const [errorMsg, setErrorMsg]   = useState('')
+
+  useEffect(() => {
+    if (open) {
+      setCaption(target.prefill_caption ?? `✨ ${target.topic}\n\nBrought to you by Fresh-CAN 🌿`)
+      setHashtags(target.prefill_hashtags ?? '#FreshCAN #FoodDesert #FreshProduce #Community')
+      setPlatforms(['instagram'])
+      setPhase('idle')
+      setErrorMsg('')
+    }
+  }, [open, target.topic, target.prefill_caption, target.prefill_hashtags])
+
+  const togglePlatform = (id: PlatformType) => {
+    setPlatforms((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+    )
+  }
+
+  const handlePost = async () => {
+    if (!platforms.length) return
+    setPhase('posting')
+    setErrorMsg('')
+    try {
+      const res = await fetch('/api/social/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: target.job_id,
+          content_type: target.content_type,
+          caption,
+          hashtags: hashtags.split(/[\s,]+/).filter((h) => h.startsWith('#')),
+          platforms,
+          file_url: target.media_url,
+        }),
+      })
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}))
+        throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`)
+      }
+      setPhase('success')
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Unknown error')
+      setPhase('error')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        {phase === 'success' ? (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+              <CheckCircle2 className="h-8 w-8 text-green-600" />
+            </div>
+            <div>
+              <p className="text-base font-semibold text-gray-900">Sent to n8n!</p>
+              <p className="mt-1 text-sm text-gray-500">
+                Posting to{' '}
+                {platforms
+                  .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+                  .join(', ')}
+              </p>
+            </div>
+            <Button className="mt-2 bg-gray-900 hover:bg-gray-800" onClick={onClose}>
+              Done
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Title */}
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Post to Social Media</h2>
+              <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">{target.topic}</p>
+            </div>
+
+            {/* Compact preview */}
+            {target.media_url && target.media_type === 'image' && (
+              <div className="overflow-hidden rounded-lg">
+                <img
+                  src={target.media_url}
+                  alt={target.topic}
+                  className="h-36 w-full object-cover"
+                />
+              </div>
+            )}
+            {target.media_url && target.media_type === 'video' && (
+              <div className="overflow-hidden rounded-lg bg-black">
+                <video
+                  src={target.media_url}
+                  className="h-28 w-full object-cover"
+                  preload="metadata"
+                />
+              </div>
+            )}
+            {target.media_type === 'blog' && (
+              <div className="flex items-center gap-3 rounded-lg border border-amber-100 bg-amber-50 p-3">
+                <BookOpen className="h-8 w-8 shrink-0 text-amber-500" />
+                <div className="min-w-0">
+                  <p className="line-clamp-2 text-sm font-medium text-gray-800">{target.topic}</p>
+                  <p className="text-xs text-gray-500">Blog Post</p>
+                </div>
+              </div>
+            )}
+
+            {/* Platforms */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-gray-700">Platforms</p>
+              <div className="flex flex-wrap gap-2">
+                {PLATFORM_OPTIONS.map((p) => {
+                  const selected = platforms.includes(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => togglePlatform(p.id)}
+                      className={`rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
+                        selected
+                          ? 'border-gray-900 bg-gray-900 text-white'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Caption */}
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-gray-700">Caption</p>
+              <Textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                rows={4}
+                placeholder="Write your caption…"
+                className="resize-none text-sm"
+              />
+            </div>
+
+            {/* Hashtags */}
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-gray-700">Hashtags</p>
+              <Input
+                value={hashtags}
+                onChange={(e) => setHashtags(e.target.value)}
+                placeholder="#FreshCAN #FoodDesert"
+                className="text-sm"
+              />
+            </div>
+
+            {/* Error */}
+            {phase === 'error' && (
+              <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+                <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
+                <p className="text-xs text-red-700">{errorMsg}</p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-1">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={onClose}
+                disabled={phase === 'posting'}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-gray-900 hover:bg-gray-800"
+                disabled={platforms.length === 0 || phase === 'posting'}
+                onClick={handlePost}
+              >
+                {phase === 'posting' ? (
+                  <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Posting…</>
+                ) : (
+                  <><Send className="mr-2 h-4 w-4" />Post Now</>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Shared small components ──────────────────────────────────────────────────
+
+function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="mt-4 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+      <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
+      <p className="flex-1 text-sm text-red-700">{message}</p>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />Retry
+      </Button>
+    </div>
+  )
+}
+
+function NoFilterResults({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-16 text-center">
+      <Search className="mb-3 h-8 w-8 text-gray-300" />
+      <p className="text-sm font-semibold text-gray-600">No items match your filters</p>
+      <button onClick={onClear} className="mt-3 text-sm text-blue-500 hover:underline">
+        Clear all filters
+      </button>
+    </div>
+  )
+}
+
+function EmptyState({
+  icon: Icon,
+  message,
+  onAction,
+  actionLabel,
+}: {
+  icon: React.ElementType
+  message: string
+  onAction: () => void
+  actionLabel: string
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-20 text-center">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm">
+        <Icon className="h-8 w-8 text-gray-300" />
+      </div>
+      <h3 className="text-base font-semibold text-gray-700">No content yet</h3>
+      <p className="mt-1.5 max-w-xs text-sm text-gray-400">{message}</p>
+      <Button className="mt-6 bg-gray-900 hover:bg-gray-800" onClick={onAction}>
+        <Sparkles className="mr-2 h-4 w-4" />{actionLabel}
+      </Button>
+    </div>
+  )
+}
+
+function LoadingSkeleton({ type }: { type: 'video' | 'image' | 'blog' }) {
+  const count  = type === 'blog' ? 6 : 8
+  const aspect = type === 'video' ? 'aspect-video' : type === 'image' ? 'aspect-square' : 'h-28'
+  const cols   = type === 'blog'
+    ? 'sm:grid-cols-2 lg:grid-cols-3'
+    : 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+  return (
+    <div className={`mt-4 grid grid-cols-1 gap-4 ${cols}`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="overflow-hidden rounded-xl border bg-white shadow-sm">
+          <div className={`animate-pulse bg-gray-100 ${aspect}`} />
+          <div className="space-y-2 p-4">
+            <div className="h-4 w-3/4 animate-pulse rounded bg-gray-100" />
+            <div className="h-3 w-1/2 animate-pulse rounded bg-gray-100" />
+            <div className="h-8 w-full animate-pulse rounded bg-gray-100" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── FilterBar ────────────────────────────────────────────────────────────────
+
+interface FilterBarProps {
+  search: string; setSearch: (v: string) => void
+  category: string; setCategory: (v: string) => void
+  lang: string; setLang: (v: string) => void
+  sort: 'desc' | 'asc'; setSort: (v: 'desc' | 'asc') => void
+}
+
+function FilterBar({ search, setSearch, category, setCategory, lang, setLang, sort, setSort }: FilterBarProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="relative w-60">
+        <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+        <Input
+          placeholder="Search by topic…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9 text-sm"
+        />
+      </div>
+      <Select value={category} onValueChange={(v) => setCategory(v ?? 'all')}>
+        <SelectTrigger className="w-52 text-sm">
+          <SelectValue placeholder="All Categories" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Categories</SelectItem>
+          {CATEGORIES.map((c) => (
+            <SelectItem key={c} value={c}>{c}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="flex overflow-hidden rounded-lg border border-gray-200">
+        {(['all', 'EN', 'FR'] as const).map((l) => (
+          <button
+            key={l}
+            onClick={() => setLang(l)}
+            className={`px-3 py-1.5 text-sm transition-colors ${
+              lang === l ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {l === 'all' ? 'All' : l}
+          </button>
+        ))}
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="ml-auto"
+        onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
+      >
+        <ArrowUpDown className="mr-1.5 h-3.5 w-3.5" />
+        {sort === 'desc' ? 'Newest First' : 'Oldest First'}
+      </Button>
+    </div>
+  )
+}
+
+// ─── Badges ───────────────────────────────────────────────────────────────────
+
+function Badges({ isLatest, isNew }: { isLatest: boolean; isNew: boolean }) {
+  return (
+    <div className="absolute left-2 top-2 flex gap-1.5">
+      {isLatest && (
+        <span className="rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
+          Latest
+        </span>
+      )}
+      {isNew && !isLatest && (
+        <span className="rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
+          New
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ─── VideoCard ────────────────────────────────────────────────────────────────
+
+function VideoCard({ item, isLatest, isNew }: { item: VideoLibraryItem; isLatest: boolean; isNew: boolean }) {
+  const [viewOpen, setViewOpen] = useState(false)
+  const [postOpen, setPostOpen] = useState(false)
+  const duration = item.output_data?.duration_sec
+  const filename = `${item.topic.slice(0, 40).replace(/\s+/g, '-').toLowerCase()}.mp4`
+
+  return (
+    <>
+      <Card className="overflow-hidden border bg-white shadow-sm transition-all hover:shadow-md">
+        <div
+          className="group relative aspect-video cursor-pointer overflow-hidden bg-black"
+          onClick={() => setViewOpen(true)}
+        >
+          <video
+            src={item.video_url}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            preload="metadata"
+            playsInline
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/95 shadow-xl">
+              <Play className="ml-1 h-6 w-6 text-gray-900" />
+            </div>
+          </div>
+          <Badges isLatest={isLatest} isNew={isNew} />
+          {duration && (
+            <div className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-medium text-white">
+              {duration}s
+            </div>
+          )}
+        </div>
+
+        <CardContent className="space-y-3 p-4">
+          <div>
+            <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{item.topic}</h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+              <span>{item.category}</span>
+              <span className="text-gray-300">·</span>
+              <span>{item.language}</span>
+              {duration && <><span className="text-gray-300">·</span><span>{duration}s</span></>}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span>{formatDateTime(item.completed_at)}</span>
+          </div>
+
+          {/* Actions */}
+          <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+            <Button size="sm" variant="outline" className="text-xs" onClick={() => setViewOpen(true)}>
+              <Play className="mr-1 h-3 w-3" />Watch
+            </Button>
+            <Button
+              size="sm"
+              className="bg-gray-900 text-xs hover:bg-gray-800 text-white"
+              onClick={() => setPostOpen(true)}
+            >
+              <Share2 className="mr-1 h-3 w-3" />Post
+            </Button>
+            <a href={item.video_url} download={filename}>
+              <Button size="sm" variant="outline" className="w-full text-xs">
+                <Download className="mr-1 h-3 w-3" />Save
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* View modal */}
+      <Dialog open={viewOpen} onOpenChange={(v) => setViewOpen(v)}>
+        <DialogContent className="sm:max-w-4xl gap-0 p-0 overflow-hidden">
+          <div className="bg-black">
+            <video src={item.video_url} controls autoPlay playsInline className="w-full max-h-[72vh]" />
+          </div>
+          <div className="flex items-start justify-between gap-4 p-4">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold leading-snug text-gray-900">{item.topic}</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {item.category} · {item.language}{duration ? ` · ${duration}s` : ''}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-400">{formatDateTime(item.completed_at)}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => { setViewOpen(false); setPostOpen(true) }}>
+                <Share2 className="mr-1.5 h-3.5 w-3.5" />Post
+              </Button>
+              <a href={item.video_url} download={filename}>
+                <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" />Download</Button>
+              </a>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Post modal */}
+      <PostModal
+        target={{ job_id: item.job_id, topic: item.topic, content_type: 'video', media_url: item.video_url, media_type: 'video' }}
+        open={postOpen}
+        onClose={() => setPostOpen(false)}
+      />
+    </>
+  )
+}
+
+// ─── ImageCard ────────────────────────────────────────────────────────────────
+
+function ImageCard({ item, isLatest, isNew, isHighlighted }: { item: ImageLibraryItem; isLatest: boolean; isNew: boolean; isHighlighted?: boolean }) {
+  const [viewOpen, setViewOpen] = useState(false)
+  const [postOpen, setPostOpen] = useState(false)
+  const filename = `${item.topic.slice(0, 40).replace(/\s+/g, '-').toLowerCase()}.jpg`
+
+  return (
+    <>
+      <Card className={`overflow-hidden border bg-white shadow-sm transition-all hover:shadow-md${isHighlighted ? ' ring-2 ring-green-500 ring-offset-2' : ''}`}>
+        <div
+          className="group relative aspect-square cursor-pointer overflow-hidden bg-gray-100"
+          onClick={() => setViewOpen(true)}
+        >
+          <img
+            src={item.image_url}
+            alt={item.topic}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/95 shadow-xl">
+              <ImageIcon className="h-5 w-5 text-gray-900" />
+            </div>
+          </div>
+          <Badges isLatest={isLatest} isNew={isNew} />
+        </div>
+
+        <CardContent className="space-y-3 p-4">
+          <div>
+            <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{item.topic}</h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+              <span>{item.category}</span>
+              {item.language && <><span className="text-gray-300">·</span><span>{item.language}</span></>}
+            </div>
+          </div>
+
+          {item.caption && (
+            <p className="line-clamp-2 text-xs leading-relaxed text-gray-500">{item.caption}</p>
+          )}
+
+          {item.hashtags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {item.hashtags.slice(0, 5).map((tag, i) => (
+                <span key={i} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-600">
+                  {tag.startsWith('#') ? tag : `#${tag}`}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span>{formatDateTime(item.completed_at)}</span>
+          </div>
+
+          {/* Actions */}
+          <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+            <Button size="sm" variant="outline" className="text-xs" onClick={() => setViewOpen(true)}>
+              <ImageIcon className="mr-1 h-3 w-3" />View
+            </Button>
+            <Button
+              size="sm"
+              className="bg-gray-900 text-xs hover:bg-gray-800 text-white"
+              onClick={() => setPostOpen(true)}
+            >
+              <Share2 className="mr-1 h-3 w-3" />Post
+            </Button>
+            <a href={item.image_url} download={filename}>
+              <Button size="sm" variant="outline" className="w-full text-xs">
+                <Download className="mr-1 h-3 w-3" />Save
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* View modal */}
+      <Dialog open={viewOpen} onOpenChange={(v) => setViewOpen(v)}>
+        <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden">
+          <div className="flex max-h-[75vh] items-center justify-center overflow-hidden bg-gray-100">
+            <img src={item.image_url} alt={item.topic} className="max-h-[75vh] max-w-full object-contain" />
+          </div>
+          <div className="flex items-start justify-between gap-4 p-4">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold leading-snug text-gray-900">{item.topic}</h3>
+              <p className="mt-1 text-sm text-gray-500">{item.category}{item.language ? ` · ${item.language}` : ''}</p>
+              {item.caption && <p className="mt-1.5 text-sm leading-relaxed text-gray-700">{item.caption}</p>}
+              {item.hashtags.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {item.hashtags.map((tag, i) => (
+                    <span key={i} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-600">
+                      {tag.startsWith('#') ? tag : `#${tag}`}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="mt-1.5 text-xs text-gray-400">{formatDateTime(item.completed_at)}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => { setViewOpen(false); setPostOpen(true) }}>
+                <Share2 className="mr-1.5 h-3.5 w-3.5" />Post
+              </Button>
+              <a href={item.image_url} download={filename}>
+                <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" />Download</Button>
+              </a>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Post modal */}
+      <PostModal
+        target={{
+          job_id: item.job_id, topic: item.topic, content_type: 'image_post',
+          media_url: item.image_url, media_type: 'image',
+          prefill_caption: item.caption || undefined,
+          prefill_hashtags: item.hashtags.length > 0 ? item.hashtags.join(' ') : undefined,
+        }}
+        open={postOpen}
+        onClose={() => setPostOpen(false)}
+      />
+    </>
+  )
+}
+
+// ─── BlogCard ─────────────────────────────────────────────────────────────────
+
+function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: boolean; isNew: boolean }) {
+  const [readOpen, setReadOpen] = useState(false)
+  const [postOpen, setPostOpen] = useState(false)
+
+  const title     = item.output_data?.title ?? item.topic
+  const excerpt   = item.output_data?.excerpt ?? item.output_data?.content?.slice(0, 180) ?? null
+  const wordCount = item.output_data?.word_count
+  const tags      = item.output_data?.tags ?? []
+  const content   = item.output_data?.content ?? null
+
+  return (
+    <>
+      <Card className="border bg-white shadow-sm transition-all hover:shadow-md">
+        <CardContent className="space-y-3 p-4">
+          {/* Header */}
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-100 bg-amber-50">
+              <BookOpen className="h-5 w-5 text-amber-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{title}</h3>
+                <div className="flex shrink-0 flex-col gap-1">
+                  {isLatest && (
+                    <span className="rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                      Latest
+                    </span>
+                  )}
+                  {isNew && !isLatest && (
+                    <span className="rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                      New
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                <span>{item.category}</span>
+                <span className="text-gray-300">·</span>
+                <span>{item.language}</span>
+                {wordCount && (
+                  <>
+                    <span className="text-gray-300">·</span>
+                    <span>{wordCount.toLocaleString()} words</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {excerpt && (
+            <p className="line-clamp-3 text-xs leading-relaxed text-gray-500">{excerpt}</p>
+          )}
+
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {tags.slice(0, 4).map((tag) => (
+                <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
+                  <Tag className="h-2.5 w-2.5" />{tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span>{formatDateTime(item.completed_at)}</span>
+          </div>
+
+          {/* Actions */}
+          <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+            {content ? (
+              <Button size="sm" variant="outline" className="text-xs" onClick={() => setReadOpen(true)}>
+                <BookOpen className="mr-1 h-3 w-3" />Read
+              </Button>
+            ) : item.file_url ? (
+              <a href={item.file_url} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" variant="outline" className="w-full text-xs">
+                  <ExternalLink className="mr-1 h-3 w-3" />Open
+                </Button>
+              </a>
+            ) : (
+              <div />
+            )}
+            <Button
+              size="sm"
+              className="bg-gray-900 text-xs hover:bg-gray-800 text-white"
+              onClick={() => setPostOpen(true)}
+            >
+              <Share2 className="mr-1 h-3 w-3" />Post
+            </Button>
+            {item.file_url ? (
+              <a href={item.file_url} target="_blank" rel="noopener noreferrer">
+                <Button size="sm" variant="outline" className="w-full text-xs">
+                  <ExternalLink className="mr-1 h-3 w-3" />Link
+                </Button>
+              </a>
+            ) : (
+              <div />
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Read modal */}
+      {content && (
+        <Dialog open={readOpen} onOpenChange={(v) => setReadOpen(v)}>
+          <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden">
+            <div className="border-b p-6 pb-4">
+              <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {item.category} · {item.language}{wordCount ? ` · ${wordCount.toLocaleString()} words` : ''}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-400">{formatDateTime(item.completed_at)}</p>
+              {tags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {tags.map((tag) => (
+                    <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
+                      <Tag className="h-2.5 w-2.5" />{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="max-h-[58vh] overflow-y-auto p-6">
+              <p className="whitespace-pre-wrap text-sm leading-7 text-gray-800">{content}</p>
+            </div>
+            <div className="flex justify-between border-t p-4">
+              <Button size="sm" onClick={() => { setReadOpen(false); setPostOpen(true) }}>
+                <Share2 className="mr-1.5 h-3.5 w-3.5" />Post This
+              </Button>
+              {item.file_url && (
+                <a href={item.file_url} target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="outline">
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />Open Published Post
+                  </Button>
+                </a>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Post modal */}
+      <PostModal
+        target={{ job_id: item.job_id, topic: item.topic, content_type: 'blog', media_url: item.file_url ?? null, media_type: 'blog' }}
+        open={postOpen}
+        onClose={() => setPostOpen(false)}
+      />
+    </>
+  )
+}
+
+// ─── VideoSection ─────────────────────────────────────────────────────────────
+
+function VideoSection() {
+  const router = useRouter()
+  const [items, setItems]       = useState<VideoLibraryItem[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState<string | null>(null)
+  const [newIds, setNewIds]     = useState<Set<string>>(new Set())
+  const [search, setSearch]     = useState('')
+  const [category, setCategory] = useState('all')
+  const [lang, setLang]         = useState('all')
+  const [sort, setSort]         = useState<'desc' | 'asc'>('desc')
+
+  const load = useCallback(async () => {
+    setError(null)
+    try { setItems(await getVideoLibrary()) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Failed to load') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const ch = supabase
+      .channel('lib-video')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'generated_content', filter: 'content_type=eq.video' },
+        (p) => {
+          const r = p.new as { id: string; file_url: string | null }
+          if (!r.file_url) return
+          setNewIds((prev) => new Set(prev).add(r.id))
+          load()
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [load])
+
+  const filtered = useMemo(() => {
+    let list = items
+    if (search.trim()) list = list.filter((v) => v.topic.toLowerCase().includes(search.toLowerCase()))
+    if (category !== 'all') list = list.filter((v) => v.category === category)
+    if (lang !== 'all') list = list.filter((v) => v.language === lang)
+    if (sort === 'asc') list = [...list].reverse()
+    return list
+  }, [items, search, category, lang, sort])
+
+  if (loading) return <LoadingSkeleton type="video" />
+  if (error) return <ErrorBanner message={error} onRetry={load} />
+
+  return (
+    <div className="space-y-4 pt-4">
+      {items.length > 0 && (
+        <FilterBar search={search} setSearch={setSearch} category={category} setCategory={setCategory} lang={lang} setLang={setLang} sort={sort} setSort={setSort} />
+      )}
+      {items.length === 0 ? (
+        <EmptyState icon={FileVideo} message="Approve a video script to generate your first video" onAction={() => router.push('/dashboard')} actionLabel="Go to Content Jobs →" />
+      ) : filtered.length === 0 ? (
+        <NoFilterResults onClear={() => { setSearch(''); setCategory('all'); setLang('all') }} />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filtered.map((item, i) => (
+            <VideoCard key={item.id} item={item} isLatest={i === 0 && sort === 'desc'} isNew={newIds.has(item.id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── ImageSection ─────────────────────────────────────────────────────────────
+
+function ImageSection({ highlightJobId }: { highlightJobId?: string }) {
+  const router = useRouter()
+  const [items, setItems]       = useState<ImageLibraryItem[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState<string | null>(null)
+  const [newIds, setNewIds]     = useState<Set<string>>(new Set())
+  const [search, setSearch]     = useState('')
+  const [category, setCategory] = useState('all')
+  const [lang, setLang]         = useState('all')
+  const [sort, setSort]         = useState<'desc' | 'asc'>('desc')
+  const highlightRef            = useRef<HTMLDivElement>(null)
+
+  const load = useCallback(async () => {
+    setError(null)
+    try { setItems(await getImageLibrary()) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Failed to load') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!loading && highlightJobId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [loading, highlightJobId])
+
+  useEffect(() => {
+    const ch = supabase
+      .channel('lib-image')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'generated_content' },
+        (p) => {
+          const r = p.new as Record<string, unknown>
+          const ct = String(r.content_type ?? '')
+          if (ct !== 'image_post') return
+          setNewIds((prev) => new Set(prev).add(r.id as string))
+          load()
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [load])
+
+  const filtered = useMemo(() => {
+    let list = items
+    if (search.trim()) list = list.filter((v) => v.topic.toLowerCase().includes(search.toLowerCase()))
+    if (category !== 'all') list = list.filter((v) => v.category === category)
+    if (lang !== 'all') list = list.filter((v) => v.language === lang)
+    if (sort === 'asc') list = [...list].reverse()
+    return list
+  }, [items, search, category, lang, sort])
+
+  if (loading) return <LoadingSkeleton type="image" />
+  if (error) return <ErrorBanner message={error} onRetry={load} />
+
+  return (
+    <div className="space-y-4 pt-4">
+      {items.length > 0 && (
+        <FilterBar search={search} setSearch={setSearch} category={category} setCategory={setCategory} lang={lang} setLang={setLang} sort={sort} setSort={setSort} />
+      )}
+      {items.length === 0 ? (
+        <EmptyState icon={ImageIcon} message="Submit an image post request to generate your first image" onAction={() => router.push('/dashboard/new')} actionLabel="Create New Content →" />
+      ) : filtered.length === 0 ? (
+        <NoFilterResults onClear={() => { setSearch(''); setCategory('all'); setLang('all') }} />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filtered.map((item, i) => {
+            const isHighlighted = !!highlightJobId && item.job_id === highlightJobId
+            return (
+              <div key={item.id} ref={isHighlighted ? highlightRef : undefined}>
+                <ImageCard item={item} isLatest={i === 0 && sort === 'desc'} isNew={newIds.has(item.id)} isHighlighted={isHighlighted} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── BlogSection ──────────────────────────────────────────────────────────────
+
+function BlogSection() {
+  const router = useRouter()
+  const [items, setItems]       = useState<BlogLibraryItem[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState<string | null>(null)
+  const [newIds, setNewIds]     = useState<Set<string>>(new Set())
+  const [search, setSearch]     = useState('')
+  const [category, setCategory] = useState('all')
+  const [lang, setLang]         = useState('all')
+  const [sort, setSort]         = useState<'desc' | 'asc'>('desc')
+
+  const load = useCallback(async () => {
+    setError(null)
+    try { setItems(await getBlogLibrary()) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Failed to load') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const ch = supabase
+      .channel('lib-blog')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'generated_content', filter: 'content_type=eq.blog' },
+        (p) => {
+          const r = p.new as { id: string }
+          setNewIds((prev) => new Set(prev).add(r.id))
+          load()
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [load])
+
+  const filtered = useMemo(() => {
+    let list = items
+    if (search.trim()) list = list.filter((v) => v.topic.toLowerCase().includes(search.toLowerCase()))
+    if (category !== 'all') list = list.filter((v) => v.category === category)
+    if (lang !== 'all') list = list.filter((v) => v.language === lang)
+    if (sort === 'asc') list = [...list].reverse()
+    return list
+  }, [items, search, category, lang, sort])
+
+  if (loading) return <LoadingSkeleton type="blog" />
+  if (error) return <ErrorBanner message={error} onRetry={load} />
+
+  return (
+    <div className="space-y-4 pt-4">
+      {items.length > 0 && (
+        <FilterBar search={search} setSearch={setSearch} category={category} setCategory={setCategory} lang={lang} setLang={setLang} sort={sort} setSort={setSort} />
+      )}
+      {items.length === 0 ? (
+        <EmptyState icon={FileText} message="Submit a blog post request to generate your first article" onAction={() => router.push('/dashboard/new')} actionLabel="Create New Content →" />
+      ) : filtered.length === 0 ? (
+        <NoFilterResults onClear={() => { setSearch(''); setCategory('all'); setLang('all') }} />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((item, i) => (
+            <BlogCard key={item.id} item={item} isLatest={i === 0 && sort === 'desc'} isNew={newIds.has(item.id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── GenerationTracker ────────────────────────────────────────────────────────
+
+const TRACKER_CFG: Record<string, { label: string; viewLabel: string; section: string }> = {
+  video:      { label: 'Video',      viewLabel: 'View Videos',     section: 'videos' },
+  image_post: { label: 'Image Post', viewLabel: 'View Images',     section: 'images' },
+  blog:       { label: 'Blog Post',  viewLabel: 'View Blog Posts', section: 'blogs'  },
+}
+
+function GenerationTracker({
+  jobId,
+  onDismiss,
+  onNavigate,
+}: {
+  jobId: string
+  onDismiss: () => void
+  onNavigate: (section: string) => void
+}) {
+  const [topic, setTopic]         = useState('')
+  const [types, setTypes]         = useState<string[]>([])
+  const [done, setDone]           = useState<Record<string, boolean>>({})
+  const [initLoading, setInit]    = useState(true)
+
+  const refresh = useCallback(async (typeList: string[]) => {
+    const checks = await Promise.all(typeList.map(async (t) => {
+      let found = false
+      if (t === 'image_post') {
+        const { data } = await supabase.from('generated_content').select('id')
+          .eq('job_id', jobId).eq('content_type', 'image_post').eq('status', 'completed').maybeSingle()
+        found = !!data
+      } else if (t === 'video') {
+        const { data } = await supabase.from('generated_content').select('id')
+          .eq('job_id', jobId).eq('content_type', 'video').not('file_url', 'is', null).maybeSingle()
+        found = !!data
+      } else if (t === 'blog') {
+        const { data } = await supabase.from('generated_content').select('id')
+          .eq('job_id', jobId).eq('content_type', 'blog').maybeSingle()
+        found = !!data
+      }
+      return [t, found] as [string, boolean]
+    }))
+    setDone(Object.fromEntries(checks))
+  }, [jobId])
+
+  useEffect(() => {
+    const init = async () => {
+      const { data: job } = await supabase.from('content_jobs')
+        .select('topic, content_types').eq('id', jobId).maybeSingle()
+      if (!job) { setInit(false); return }
+      const t = (job as { topic: string }).topic
+      const tl = ((job as { content_types: string[] }).content_types ?? [])
+      setTopic(t)
+      setTypes(tl)
+      await refresh(tl)
+      setInit(false)
+    }
+    init()
+  }, [jobId, refresh])
+
+  // Poll incomplete types every 8 s
+  useEffect(() => {
+    if (initLoading || types.length === 0) return
+    const hasPending = types.some((t) => !done[t])
+    if (!hasPending) return
+    const id = setInterval(() => refresh(types), 8000)
+    return () => clearInterval(id)
+  }, [initLoading, types, done, refresh])
+
+  if (initLoading) return null
+
+  const doneCount = types.filter((t) => done[t]).length
+  const allDone   = types.length > 0 && doneCount === types.length
+
+  return (
+    <div className={`rounded-xl border p-4 ${allDone ? 'border-green-200 bg-green-50' : 'border-blue-200 bg-blue-50/60'}`}>
+      {/* Header row */}
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {allDone
+            ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+            : <Loader2 className="h-4 w-4 animate-spin text-blue-500" />}
+          <span className="text-sm font-semibold text-gray-900">
+            {allDone
+              ? `✅ All content ready · "${topic}"`
+              : `Generating "${topic}" · ${doneCount} / ${types.length} complete`}
+          </span>
+        </div>
+        <button onClick={onDismiss} className="text-xs text-gray-400 hover:text-gray-600">
+          ✕ Dismiss
+        </button>
+      </div>
+
+      {/* Per-type rows */}
+      <div className="space-y-1.5">
+        {types.map((t) => {
+          const cfg    = TRACKER_CFG[t]
+          const isDone = done[t] ?? false
+          return (
+            <div key={t} className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2">
+              <div className="flex items-center gap-2.5">
+                {isDone
+                  ? <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                  : <Loader2      className="h-3.5 w-3.5 animate-spin text-blue-400" />}
+                <span className="text-sm font-medium text-gray-800">{cfg?.label ?? t}</span>
+                <span className={`text-xs ${isDone ? 'text-green-600 font-medium' : 'text-blue-500'}`}>
+                  {isDone ? 'Ready' : 'Generating…'}
+                </span>
+              </div>
+              {isDone && cfg && (
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onNavigate(cfg.section)}>
+                  {cfg.viewLabel} →
+                </Button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Page content ─────────────────────────────────────────────────────────────
+
+export default function LibraryContent() {
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const section   = searchParams.get('section') ?? 'videos'
+  const highlight = searchParams.get('highlight') ?? undefined
+  const trackParam = searchParams.get('track') ?? undefined
+
+  const initialTab =
+    section === 'images' ? 'images' :
+    section === 'blogs'  ? 'blogs'  : 'videos'
+
+  const [activeTab,    setActiveTab]    = useState(initialTab)
+  const [trackJobId,   setTrackJobId]   = useState<string | undefined>(trackParam)
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    const params = trackJobId ? `?section=${value}&track=${trackJobId}` : `?section=${value}`
+    router.replace(`/dashboard/library${params}`, { scroll: false })
+  }
+
+  const handleDismissTracker = () => {
+    setTrackJobId(undefined)
+    router.replace(`/dashboard/library?section=${activeTab}`, { scroll: false })
+  }
+
+  return (
+    <div className="space-y-6">
+      <TopBar
+        title="Content Library"
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Library' },
+        ]}
+      />
+
+      {trackJobId && (
+        <GenerationTracker
+          jobId={trackJobId}
+          onDismiss={handleDismissTracker}
+          onNavigate={(sec) => handleTabChange(sec)}
+        />
+      )}
+
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="videos">
+            <FileVideo className="mr-1.5 h-4 w-4" />Videos
+          </TabsTrigger>
+          <TabsTrigger value="images">
+            <ImageIcon className="mr-1.5 h-4 w-4" />Images
+          </TabsTrigger>
+          <TabsTrigger value="blogs">
+            <BookOpen className="mr-1.5 h-4 w-4" />Blog Posts
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="videos"><VideoSection /></TabsContent>
+        <TabsContent value="images"><ImageSection highlightJobId={highlight} /></TabsContent>
+        <TabsContent value="blogs"><BlogSection /></TabsContent>
+      </Tabs>
+    </div>
+  )
+}
