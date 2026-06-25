@@ -660,13 +660,15 @@ function ImageCard({ item, isLatest, isNew, isHighlighted }: { item: ImageLibrar
 
 // ─── Blog hero image ─────────────────────────────────────────────────────────
 
-function BlogHero({ title, outputData }: { title: string; outputData: Record<string, unknown> | null }) {
+function BlogHero({ title, outputData, fileUrl }: { title: string; outputData: Record<string, unknown> | null; fileUrl: string | null }) {
   const [visible, setVisible] = useState(false)
   const [errored, setErrored] = useState(false)
 
+  // file_url is the primary hero image; fall back to output_data image fields
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const od = outputData as any
-  const raw = od?.image_url ?? od?.hero_image ?? od?.featured_image ?? od?.cover_image ?? null
+  const fromOutputData = od?.image_url ?? od?.hero_image ?? od?.featured_image ?? od?.cover_image ?? null
+  const raw = fileUrl ?? fromOutputData
   const heroUrl = typeof raw === 'string' && raw.startsWith('http') ? raw : null
 
   useEffect(() => { setVisible(false); setErrored(false) }, [heroUrl])
@@ -732,9 +734,9 @@ function BlogContentRenderer({ content }: { content: string }) {
           block.length < 100 &&
           !block.endsWith('.') &&
           !block.endsWith(',') &&
+          !block.endsWith('?') &&
           !block.includes('\n') &&
-          block.split(' ').length <= 12 &&
-          i > 0
+          block.split(' ').length <= 14
 
         if (isHeading)
           return <h2 key={i} className="mt-8 mb-3 text-base font-bold text-gray-900 border-b border-gray-100 pb-2">{block}</h2>
@@ -824,16 +826,10 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
 
           {/* Actions */}
           <div className="grid grid-cols-3 gap-1.5 pt-0.5">
-            {content ? (
+            {(content || item.file_url) ? (
               <Button size="sm" variant="outline" className="text-xs" onClick={() => setReadOpen(true)}>
                 <BookOpen className="mr-1 h-3 w-3" />Read
               </Button>
-            ) : item.file_url ? (
-              <a href={item.file_url} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" variant="outline" className="w-full text-xs">
-                  <ExternalLink className="mr-1 h-3 w-3" />Open
-                </Button>
-              </a>
             ) : (
               <div />
             )}
@@ -858,11 +854,11 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
       </Card>
 
       {/* Read modal */}
-      {content && (
+      {(content || item.file_url) && (
         <Dialog open={readOpen} onOpenChange={(v) => setReadOpen(v)}>
           <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden max-h-[92vh] flex flex-col">
             {/* Hero image */}
-            <BlogHero title={title} outputData={item.output_data} />
+            <BlogHero title={title} outputData={item.output_data} fileUrl={item.file_url ?? null} />
 
             {/* Header meta row */}
             <div className="shrink-0 border-b px-6 py-4">
@@ -887,9 +883,11 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
             </div>
 
             {/* Body */}
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              <BlogContentRenderer content={content} />
-            </div>
+            {content && (
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                <BlogContentRenderer content={content} />
+              </div>
+            )}
 
             {/* Footer */}
             <div className="flex shrink-0 items-center justify-between border-t bg-gray-50 px-5 py-3">
