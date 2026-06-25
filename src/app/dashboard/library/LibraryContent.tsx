@@ -557,11 +557,6 @@ function ImageCard({ item, isLatest, isNew, isHighlighted }: { item: ImageLibrar
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
           />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/95 shadow-xl">
-              <ImageIcon className="h-5 w-5 text-gray-900" />
-            </div>
-          </div>
           <Badges isLatest={isLatest} isNew={isNew} />
         </div>
 
@@ -660,6 +655,64 @@ function ImageCard({ item, isLatest, isNew, isHighlighted }: { item: ImageLibrar
         onClose={() => setPostOpen(false)}
       />
     </>
+  )
+}
+
+// ─── Blog content renderer ────────────────────────────────────────────────────
+
+function renderInline(text: string): React.ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**'))
+      return <strong key={i}>{part.slice(2, -2)}</strong>
+    if (part.startsWith('*') && part.endsWith('*'))
+      return <em key={i}>{part.slice(1, -1)}</em>
+    return part
+  })
+}
+
+function BlogContentRenderer({ content }: { content: string }) {
+  const blocks = content.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean)
+
+  return (
+    <div className="prose-blog">
+      {blocks.map((block, i) => {
+        if (block.startsWith('### '))
+          return <h3 key={i} className="mt-6 mb-2 text-base font-bold text-gray-900">{block.slice(4)}</h3>
+        if (block.startsWith('## '))
+          return <h2 key={i} className="mt-8 mb-3 text-lg font-bold text-gray-900 border-b border-gray-100 pb-2">{block.slice(3)}</h2>
+        if (block.startsWith('# '))
+          return <h1 key={i} className="mt-6 mb-3 text-xl font-bold text-gray-900">{block.slice(2)}</h1>
+
+        const imgMatch = block.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
+        if (imgMatch)
+          return (
+            <div key={i} className="my-6 overflow-hidden rounded-xl">
+              <img src={imgMatch[2]} alt={imgMatch[1]} className="w-full object-cover max-h-72" />
+              {imgMatch[1] && <p className="mt-1.5 text-center text-xs text-gray-400 italic">{imgMatch[1]}</p>}
+            </div>
+          )
+
+        const isHeading =
+          block.length < 100 &&
+          !block.endsWith('.') &&
+          !block.endsWith(',') &&
+          !block.includes('\n') &&
+          block.split(' ').length <= 12 &&
+          i > 0
+
+        if (isHeading)
+          return <h2 key={i} className="mt-8 mb-3 text-base font-bold text-gray-900 border-b border-gray-100 pb-2">{block}</h2>
+
+        return (
+          <p key={i} className="mb-4 text-sm leading-7 text-gray-700">
+            {block.split('\n').flatMap((line, j, arr) => [
+              ...renderInline(line),
+              ...(j < arr.length - 1 ? [<br key={`br-${j}`} />] : []),
+            ])}
+          </p>
+        )
+      })}
+    </div>
   )
 }
 
@@ -771,15 +824,43 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
       {/* Read modal */}
       {content && (
         <Dialog open={readOpen} onOpenChange={(v) => setReadOpen(v)}>
-          <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden">
-            <div className="border-b p-6 pb-4">
-              <h2 className="text-xl font-bold text-gray-900">{title}</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                {item.category} · {item.language}{wordCount ? ` · ${wordCount.toLocaleString()} words` : ''}
-              </p>
-              <p className="mt-0.5 text-xs text-gray-400">{formatDateTime(item.completed_at)}</p>
+          <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden max-h-[92vh] flex flex-col">
+            {/* Hero image */}
+            {(() => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const od = item.output_data as any
+              const heroUrl = od?.image_url ?? od?.hero_image ?? od?.featured_image ?? od?.cover_image ?? null
+              return heroUrl ? (
+                <div className="relative h-52 w-full shrink-0 overflow-hidden bg-gray-100">
+                  <img src={heroUrl} alt={title} className="h-full w-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                  <div className="absolute bottom-0 left-0 right-0 p-5">
+                    <h2 className="text-xl font-bold leading-snug text-white text-wrap-balance">{title}</h2>
+                  </div>
+                </div>
+              ) : null
+            })()}
+
+            {/* Header (no hero) or meta row */}
+            <div className="shrink-0 border-b px-6 py-4">
+              {(() => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const od = item.output_data as any
+                const heroUrl = od?.image_url ?? od?.hero_image ?? od?.featured_image ?? od?.cover_image ?? null
+                return !heroUrl ? (
+                  <h2 className="text-xl font-bold leading-snug text-gray-900 mb-2">{title}</h2>
+                ) : null
+              })()}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                <span className="font-medium text-gray-700">{item.category}</span>
+                <span className="text-gray-300">·</span>
+                <span>{item.language}</span>
+                {wordCount && <><span className="text-gray-300">·</span><span>{wordCount.toLocaleString()} words</span></>}
+                <span className="text-gray-300">·</span>
+                <span>{formatDateTime(item.completed_at)}</span>
+              </div>
               {tags.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {tags.map((tag) => (
                     <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
                       <Tag className="h-2.5 w-2.5" />{tag}
@@ -788,10 +869,14 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
                 </div>
               )}
             </div>
-            <div className="max-h-[58vh] overflow-y-auto p-6">
-              <p className="whitespace-pre-wrap text-sm leading-7 text-gray-800">{content}</p>
+
+            {/* Body */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <BlogContentRenderer content={content} />
             </div>
-            <div className="flex justify-between border-t p-4">
+
+            {/* Footer */}
+            <div className="flex shrink-0 items-center justify-between border-t bg-gray-50 px-5 py-3">
               <Button size="sm" onClick={() => { setReadOpen(false); setPostOpen(true) }}>
                 <Share2 className="mr-1.5 h-3.5 w-3.5" />Post This
               </Button>
