@@ -211,11 +211,6 @@ function MiniImageCard({ item }: { item: ImageLibraryItem }) {
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
           />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow-md">
-              <ImageIcon className="h-4 w-4 text-gray-900" />
-            </div>
-          </div>
         </div>
         <div className="p-3">
           <p className="line-clamp-2 text-xs font-semibold leading-snug text-gray-900">
