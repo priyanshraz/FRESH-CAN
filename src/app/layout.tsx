@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import GlobalProgressBar from '../components/GlobalProgressBar'
 
 export const metadata: Metadata = {
   title: 'Fresh-CAN Content Studio',
@@ -18,7 +19,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="h-full bg-gray-50 font-sans">{children}</body>
+      <body className="h-full bg-gray-50 font-sans">
+        <GlobalProgressBar />
+        {children}
+      </body>
     </html>
   )
 }

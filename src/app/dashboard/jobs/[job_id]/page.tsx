@@ -12,6 +12,7 @@ import StatusBadge from '@/components/StatusBadge'
 import ScriptPartCard from '@/components/dashboard/ScriptPartCard'
 import type { ScriptPart } from '@/components/dashboard/ScriptPartCard'
 import { supabase } from '@/lib/supabase'
+import { useContentJobStore } from '@/stores/contentJobStore'
 import {
   AlertCircle,
   CheckCircle2,
@@ -1049,6 +1050,8 @@ export default function JobDetailPage() {
   const { job_id } = useParams<{ job_id: string }>()
   const router = useRouter()
 
+  const { addJob } = useContentJobStore()
+
   const [loading, setLoading]     = useState(true)
   const [job, setJob]             = useState<ContentJob | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
@@ -1448,6 +1451,7 @@ export default function JobDetailPage() {
     setApprovedTypes(newApprovedVideo)
     setJob((prev) => prev ? { ...prev, status: 'generating' } : prev)
     setApproving(null)
+    addJob({ jobId: job_id, topic: job.topic, type: 'video', status: 'generating', progress: 0 })
     // Multi-type: redirect to tracker when all content types are approved
     const allTypesVideo = (job.content_types as ContentType[])
     if (allTypesVideo.length > 1 && allTypesVideo.every((t) => newApprovedVideo.has(t))) {
@@ -1472,6 +1476,7 @@ export default function JobDetailPage() {
       setApprovedTypes(newApproved)
       setJob((prev) => prev ? { ...prev, status: 'approved' } : prev)
       setApproving(null)
+      addJob({ jobId: job_id, topic: job.topic, type: 'image_post', status: 'completed', progress: 100 })
       const allTypes = (job.content_types as ContentType[])
       if (allTypes.length > 1) {
         // Multi-type: go to tracker when all are approved
@@ -1579,6 +1584,10 @@ export default function JobDetailPage() {
       if (existing) next.set(type, { ...existing, is_approved: true, status: 'approved' })
       return next
     })
+    if (type === 'blog') {
+      const blogTopic = (blogEdit ?? blogEditFromDraft(allDrafts.get('blog')?.draft_data ?? {})).post_title || job.topic
+      addJob({ jobId: job_id, topic: blogTopic, type: 'blog', status: 'completed', progress: 100 })
+    }
     setApproving(null)
     // Multi-type: redirect to tracker when all content types are approved
     const allTypesFinal = (job.content_types as ContentType[])
