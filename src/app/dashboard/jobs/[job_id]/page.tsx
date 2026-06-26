@@ -375,13 +375,27 @@ function WaitingCard({
   isRegenerating,
   timedOut = false,
   onRefresh,
+  startedAt,
 }: {
   type: ContentType
   topic: string
   isRegenerating: boolean
   timedOut?: boolean
   onRefresh?: () => void
+  startedAt?: number | null
 }) {
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    if (!startedAt) return
+    const update = () => {
+      const elapsed = (Date.now() - startedAt) / 1000
+      setProgress(Math.min(85, (elapsed / 90) * 85))
+    }
+    update()
+    const id = setInterval(update, 1500)
+    return () => clearInterval(id)
+  }, [startedAt])
   if (timedOut) {
     return (
       <Card className="border bg-white shadow-sm">
@@ -436,6 +450,19 @@ function WaitingCard({
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           {isRegenerating ? 'Waiting for regenerated draft…' : 'Waiting for draft…'}
         </div>
+        {startedAt && (
+          <div className="w-full max-w-xs">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-amber-100">
+              <div
+                className="h-full rounded-full bg-amber-400 transition-all duration-1000"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-center text-xs text-gray-400">
+              {Math.round((Date.now() - startedAt) / 1000)}s · usually takes 60–90s
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -669,11 +696,27 @@ function BlogTabContent({
         )}
       </div>
 
-      {/* Hero image preview */}
-      {editState.images.hero.url && (
-        <div className="overflow-hidden rounded-xl border border-gray-200">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={editState.images.hero.url} alt={editState.images.hero.alt} className="w-full max-h-56 object-cover" />
+      {/* Images preview — hero + inline side by side */}
+      {(editState.images.hero.url || editState.images.inline.url) && (
+        <div className={`grid gap-3 ${editState.images.hero.url && editState.images.inline.url ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {editState.images.hero.url && (
+            <div>
+              <p className="mb-1 text-xs text-gray-400">Hero image</p>
+              <div className="overflow-hidden rounded-xl border border-gray-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={editState.images.hero.url} alt={editState.images.hero.alt} className="h-48 w-full object-cover" />
+              </div>
+            </div>
+          )}
+          {editState.images.inline.url && (
+            <div>
+              <p className="mb-1 text-xs text-gray-400">Inline image</p>
+              <div className="overflow-hidden rounded-xl border border-gray-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={editState.images.inline.url} alt={editState.images.inline.alt} className="h-48 w-full object-cover" />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -725,7 +768,7 @@ function BlogTabContent({
                 {sec.has_inline_image && editState.images.inline.url && (
                   <div className="overflow-hidden rounded-lg border border-gray-100">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={editState.images.inline.url} alt={editState.images.inline.alt} className="w-full max-h-40 object-cover" />
+                    <img src={editState.images.inline.url} alt={editState.images.inline.alt} className="h-40 w-full object-cover" />
                   </div>
                 )}
 
@@ -1035,6 +1078,9 @@ export default function JobDetailPage() {
   // Timeout for long-running generation
   const [timedOut, setTimedOut] = useState(false)
 
+  // Blog wait start — persisted in sessionStorage so back-navigation restores progress
+  const [blogWaitStart, setBlogWaitStart] = useState<number | null>(null)
+
   const needsPolling = useMemo(() => {
     if (regenLoading !== null) return true
     if (job && (job.status === 'pending' || job.status === 'draft_ready')) {
@@ -1158,6 +1204,27 @@ export default function JobDetailPage() {
     const id = setInterval(poll, 4000)
     return () => { active = false; clearInterval(id) }
   }, [needsPolling, timedOut, reloadDrafts])
+
+  // ── Blog wait progress — persist start time across navigation ────────────────
+
+  useEffect(() => {
+    if (!job) return
+    const hasBlog = (job.content_types as ContentType[]).includes('blog')
+    const key = `blog-wait-${job_id}`
+    if (hasBlog && !allDrafts.has('blog')) {
+      const stored = sessionStorage.getItem(key)
+      if (stored) {
+        setBlogWaitStart(parseInt(stored, 10))
+      } else {
+        const now = Date.now()
+        sessionStorage.setItem(key, String(now))
+        setBlogWaitStart(now)
+      }
+    } else if (allDrafts.has('blog')) {
+      sessionStorage.removeItem(key)
+      setBlogWaitStart(null)
+    }
+  }, [job, allDrafts, job_id])
 
   // ── Realtime: all drafts for this job ─────────────────────────────────────────
 
@@ -1569,6 +1636,7 @@ export default function JobDetailPage() {
             setRegenLoading(null)
             loadData()
           }}
+          startedAt={type === 'blog' ? blogWaitStart : null}
         />
       )
     }
