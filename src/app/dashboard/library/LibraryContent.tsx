@@ -693,6 +693,7 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
   const [draftHtml, setDraftHtml]         = useState<string | null>(null)
   const [draftInline, setDraftInline]     = useState<{ url: string; alt: string } | null>(null)
   const [draftFetching, setDraftFetching] = useState(false)
+  const fetchDone = useRef(false) // prevents infinite re-fetch when draft also has no html_final
 
   const od = item.output_data
 
@@ -713,10 +714,10 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
   const validInline = typeof inlineUrl === 'string' && inlineUrl.startsWith('http') ? inlineUrl : null
   const canRead     = true // always allow read — we can always show something
 
-  // When modal opens and html_final is missing, fetch from content_drafts
+  // When modal opens and html_final missing in generated_content → fetch from content_drafts once
   useEffect(() => {
-    const needsFetch = readOpen && !od?.html_final && !od?.post_content && draftHtml === null && !draftFetching
-    if (!needsFetch) return
+    if (!readOpen || od?.html_final || od?.post_content || fetchDone.current) return
+    fetchDone.current = true
     setDraftFetching(true)
     supabase
       .from('content_drafts')
@@ -726,17 +727,18 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
       .maybeSingle()
       .then(({ data }) => {
         if (data?.draft_data) {
-          const dd = data.draft_data as Record<string, unknown>
-          setDraftHtml((dd.html_final as string | undefined) ?? null)
-          const imgs = (dd.images as Record<string, unknown> | undefined)
-          const inl  = (imgs?.inline as Record<string, unknown> | undefined)
-          if (typeof inl?.url === 'string' && inl.url.startsWith('http')) {
+          const dd  = data.draft_data as Record<string, unknown>
+          const html = typeof dd.html_final === 'string' ? dd.html_final : null
+          if (html) setDraftHtml(html)
+          const imgs = dd.images as Record<string, unknown> | undefined
+          const inl  = imgs?.inline as Record<string, unknown> | undefined
+          if (typeof inl?.url === 'string' && (inl.url as string).startsWith('http')) {
             setDraftInline({ url: inl.url as string, alt: (inl.alt as string) ?? 'Inline image' })
           }
         }
         setDraftFetching(false)
       })
-  }, [readOpen, od?.html_final, od?.post_content, draftHtml, draftFetching, item.job_id])
+  }, [readOpen, item.job_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setHeroLoaded(false); setHeroError(false) }, [validHero])
 
