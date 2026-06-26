@@ -689,16 +689,21 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
   const [heroLoaded, setHeroLoaded] = useState(false)
   const [heroError, setHeroError] = useState(false)
 
+  // Fallback: fetch html_final from content_drafts if not in generated_content
+  const [draftHtml, setDraftHtml]         = useState<string | null>(null)
+  const [draftInline, setDraftInline]     = useState<{ url: string; alt: string } | null>(null)
+  const [draftFetching, setDraftFetching] = useState(false)
+
   const od = item.output_data
 
   // Support both old and new n8n format
   const title      = od?.post_title    ?? od?.title    ?? item.topic
   const excerpt    = od?.post_excerpt  ?? od?.excerpt  ?? (typeof od?.content === 'string' ? od.content.slice(0, 180) : null)
-  const htmlFinal  = od?.html_final    ?? od?.post_content ?? null
+  const htmlFinal  = od?.html_final    ?? od?.post_content ?? draftHtml ?? null
   const heroUrl    = od?.images?.hero?.url ?? od?.hero_image_url ?? item.file_url ?? null
   const heroAlt    = od?.images?.hero?.alt ?? title
-  const inlineUrl  = od?.images?.inline?.url ?? od?.inline_image_url ?? null
-  const inlineAlt  = od?.images?.inline?.alt ?? 'Inline image'
+  const inlineUrl  = od?.images?.inline?.url ?? od?.inline_image_url ?? draftInline?.url ?? null
+  const inlineAlt  = od?.images?.inline?.alt ?? draftInline?.alt ?? 'Inline image'
   const readTime   = od?.seo?.estimated_read_time ?? null
   const keyword    = od?.focus_keyword ?? null
   const wordCount  = od?.word_count    ?? null
@@ -706,7 +711,32 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
 
   const validHero   = typeof heroUrl   === 'string' && heroUrl.startsWith('http')   ? heroUrl   : null
   const validInline = typeof inlineUrl === 'string' && inlineUrl.startsWith('http') ? inlineUrl : null
-  const canRead     = !!(htmlFinal || validHero || validInline)
+  const canRead     = true // always allow read — we can always show something
+
+  // When modal opens and html_final is missing, fetch from content_drafts
+  useEffect(() => {
+    const needsFetch = readOpen && !od?.html_final && !od?.post_content && draftHtml === null && !draftFetching
+    if (!needsFetch) return
+    setDraftFetching(true)
+    supabase
+      .from('content_drafts')
+      .select('draft_data')
+      .eq('job_id', item.job_id)
+      .eq('content_type', 'blog')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.draft_data) {
+          const dd = data.draft_data as Record<string, unknown>
+          setDraftHtml((dd.html_final as string | undefined) ?? null)
+          const imgs = (dd.images as Record<string, unknown> | undefined)
+          const inl  = (imgs?.inline as Record<string, unknown> | undefined)
+          if (typeof inl?.url === 'string' && inl.url.startsWith('http')) {
+            setDraftInline({ url: inl.url as string, alt: (inl.alt as string) ?? 'Inline image' })
+          }
+        }
+        setDraftFetching(false)
+      })
+  }, [readOpen, od?.html_final, od?.post_content, draftHtml, draftFetching, item.job_id])
 
   useEffect(() => { setHeroLoaded(false); setHeroError(false) }, [validHero])
 
@@ -834,7 +864,12 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
               )}
 
               {/* Blog content */}
-              {htmlFinal ? (
+              {draftFetching ? (
+                <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading full blog…
+                </div>
+              ) : htmlFinal ? (
                 <>
                   <style>{BLOG_CSS}</style>
                   <div className="blog-render" dangerouslySetInnerHTML={{ __html: htmlFinal }} />
