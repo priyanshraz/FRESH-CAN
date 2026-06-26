@@ -662,12 +662,11 @@ function ImageCard({ item, isLatest, isNew, isHighlighted }: { item: ImageLibrar
 
 const BLOG_CSS = `
 .blog-render{max-width:860px;margin:0 auto;padding:1.5rem 2rem 2.5rem;font-family:Georgia,serif;line-height:1.85;color:#1a1a1a}
-.blog-render .hero-image,.blog-render figure.hero-image{margin:0 0 2rem;width:100%}
-.blog-render .hero-image img,.blog-render figure.hero-image img{width:100%;height:auto;display:block;border-radius:8px}
+.blog-render h1{display:none}
+.blog-render .hero-image,.blog-render figure.hero-image{display:none}
 .blog-render .inline-image,.blog-render figure.inline-image{margin:2rem auto;max-width:800px;display:block}
 .blog-render .inline-image img,.blog-render figure.inline-image img{width:100%;height:auto;display:block;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.12)}
 .blog-render figcaption{text-align:center;font-size:0.8rem;color:#777;margin-top:.5rem;font-style:italic}
-.blog-render h1{font-size:1.875rem;font-weight:700;margin:1.5rem 0 1rem;line-height:1.3}
 .blog-render h2{font-size:1.375rem;font-weight:600;margin:2rem 0 .75rem;line-height:1.3;border-bottom:1px solid #f0f0f0;padding-bottom:.4rem}
 .blog-render h3{font-size:1.1rem;font-weight:600;margin:1.5rem 0 .5rem}
 .blog-render p{margin:0 0 1.25rem}
@@ -698,13 +697,16 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
   const htmlFinal  = od?.html_final    ?? od?.post_content ?? null
   const heroUrl    = od?.images?.hero?.url ?? od?.hero_image_url ?? item.file_url ?? null
   const heroAlt    = od?.images?.hero?.alt ?? title
+  const inlineUrl  = od?.images?.inline?.url ?? od?.inline_image_url ?? null
+  const inlineAlt  = od?.images?.inline?.alt ?? 'Inline image'
   const readTime   = od?.seo?.estimated_read_time ?? null
   const keyword    = od?.focus_keyword ?? null
   const wordCount  = od?.word_count    ?? null
   const tags       = od?.tags          ?? []
 
-  const validHero = typeof heroUrl === 'string' && heroUrl.startsWith('http') ? heroUrl : null
-  const canRead   = !!(htmlFinal || validHero)
+  const validHero   = typeof heroUrl   === 'string' && heroUrl.startsWith('http')   ? heroUrl   : null
+  const validInline = typeof inlineUrl === 'string' && inlineUrl.startsWith('http') ? inlineUrl : null
+  const canRead     = !!(htmlFinal || validHero || validInline)
 
   useEffect(() => { setHeroLoaded(false); setHeroError(false) }, [validHero])
 
@@ -811,15 +813,35 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
 
             {/* Body */}
             <div className="min-h-0 flex-1 overflow-y-auto">
+              {/* Images preview — hero + inline side by side */}
+              {(validHero || validInline) && (
+                <div className={`grid gap-3 px-6 pt-5 pb-0 ${validHero && validInline ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {validHero && (
+                    <div>
+                      <p className="mb-1 text-xs text-gray-400">Hero image</p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={validHero} alt={heroAlt} className="h-44 w-full rounded-lg object-cover" />
+                    </div>
+                  )}
+                  {validInline && (
+                    <div>
+                      <p className="mb-1 text-xs text-gray-400">Inline image</p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={validInline} alt={inlineAlt} className="h-44 w-full rounded-lg object-cover" />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Blog content */}
               {htmlFinal ? (
                 <>
                   <style>{BLOG_CSS}</style>
                   <div className="blog-render" dangerouslySetInnerHTML={{ __html: htmlFinal }} />
                 </>
-              ) : validHero ? (
-                <div className="p-6 flex flex-col items-center gap-4">
-                  <img src={validHero} alt={heroAlt} className="w-full rounded-xl object-cover max-h-80" />
-                  {excerpt && <p className="text-sm text-gray-600 leading-7 max-w-prose">{excerpt}</p>}
+              ) : excerpt ? (
+                <div className="px-6 py-5">
+                  <p className="text-sm leading-relaxed text-gray-600">{excerpt}</p>
                 </div>
               ) : null}
             </div>

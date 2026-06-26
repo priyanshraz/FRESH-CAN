@@ -1553,22 +1553,36 @@ export default function JobDetailPage() {
         (n, s) => n + s.paragraphs.join(' ').split(' ').length,
         0,
       )
+      // Preserve html_final from original n8n draft so Library can render full blog
+      const originalHtmlFinal = (draft.draft_data as Record<string, unknown>)?.html_final ?? null
       await supabase.from('generated_content').upsert(
         {
           job_id,
           content_type: 'blog',
           file_url: be.images.hero.url || null,
           output_data: {
+            // New n8n format — Library reads these
+            post_title:          be.post_title,
+            post_slug:           be.post_slug,
+            post_excerpt:        be.seo.meta_description,
+            focus_keyword:       be.seo.focus_keyword,
+            html_final:          originalHtmlFinal,
+            hero_image_url:      be.images.hero.url  || null,
+            inline_image_url:    be.images.inline.url || null,
+            images: {
+              hero:   be.images.hero,
+              inline: be.images.inline,
+            },
+            seo: {
+              ...be.seo,
+              focus_keyword: be.seo.focus_keyword,
+            },
+            // Legacy keys for backwards compat
             title:               be.post_title,
             slug:                be.post_slug,
             excerpt:             be.seo.meta_description,
-            focus_keyword:       be.seo.focus_keyword,
             secondary_keywords:  be.seo.secondary_keywords,
             word_count:          wordCount,
-            hero_image:          be.images.hero,
-            content:             be.sections.map((s) =>
-              [s.heading, ...s.paragraphs, ...(s.list_items.length ? [s.list_items.join('\n')] : [])].join('\n'),
-            ).join('\n\n'),
           },
           updated_at: new Date().toISOString(),
         },
