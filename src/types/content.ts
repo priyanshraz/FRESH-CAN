@@ -239,11 +239,33 @@ export interface BlogLibraryItem {
   job_id: string
   file_url: string | null
   output_data: {
+    // Legacy plain-text format
     title?: string
     content?: string
     excerpt?: string
     word_count?: number
     tags?: string[]
+    // New n8n structured format
+    post_title?: string
+    post_slug?: string
+    post_status?: string
+    post_excerpt?: string
+    focus_keyword?: string
+    hero_image_url?: string
+    inline_image_url?: string
+    html_final?: string
+    post_content?: string
+    images?: {
+      hero?: { url: string; alt: string; width?: number; height?: number }
+      inline?: { url: string; alt: string; width?: number; height?: number }
+    }
+    seo?: {
+      title?: string
+      meta_description?: string
+      estimated_read_time?: string
+      og_title?: string
+      og_description?: string
+    }
   } | null
   completed_at: string
   topic: string

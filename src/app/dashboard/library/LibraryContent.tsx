@@ -658,165 +658,111 @@ function ImageCard({ item, isLatest, isNew, isHighlighted }: { item: ImageLibrar
   )
 }
 
-// ─── Blog hero image ─────────────────────────────────────────────────────────
+// ─── Blog HTML styles ─────────────────────────────────────────────────────────
 
-function BlogHero({ title, outputData, fileUrl }: { title: string; outputData: Record<string, unknown> | null; fileUrl: string | null }) {
-  const [visible, setVisible] = useState(false)
-  const [errored, setErrored] = useState(false)
-
-  // file_url is the primary hero image; fall back to output_data image fields
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const od = outputData as any
-  const fromOutputData = od?.image_url ?? od?.hero_image ?? od?.featured_image ?? od?.cover_image ?? null
-  const raw = fileUrl ?? fromOutputData
-  const heroUrl = typeof raw === 'string' && raw.startsWith('http') ? raw : null
-
-  useEffect(() => { setVisible(false); setErrored(false) }, [heroUrl])
-
-  if (!heroUrl || errored) return null
-
-  return (
-    <div className="relative h-52 w-full shrink-0 overflow-hidden bg-gray-100">
-      <img
-        src={heroUrl}
-        alt={title}
-        className={`h-full w-full object-cover transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
-        onLoad={() => setVisible(true)}
-        onError={() => setErrored(true)}
-      />
-      {visible && (
-        <>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-          <div className="absolute bottom-0 left-0 right-0 p-5">
-            <h2 className="text-xl font-bold leading-snug text-white">{title}</h2>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-// ─── Blog content renderer ────────────────────────────────────────────────────
-
-function renderInline(text: string): React.ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**'))
-      return <strong key={i}>{part.slice(2, -2)}</strong>
-    if (part.startsWith('*') && part.endsWith('*'))
-      return <em key={i}>{part.slice(1, -1)}</em>
-    return part
-  })
-}
-
-function BlogContentRenderer({ content }: { content: string }) {
-  const blocks = content.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean)
-
-  return (
-    <div className="prose-blog">
-      {blocks.map((block, i) => {
-        if (block.startsWith('### '))
-          return <h3 key={i} className="mt-6 mb-2 text-base font-bold text-gray-900">{block.slice(4)}</h3>
-        if (block.startsWith('## '))
-          return <h2 key={i} className="mt-8 mb-3 text-lg font-bold text-gray-900 border-b border-gray-100 pb-2">{block.slice(3)}</h2>
-        if (block.startsWith('# '))
-          return <h1 key={i} className="mt-6 mb-3 text-xl font-bold text-gray-900">{block.slice(2)}</h1>
-
-        const imgMatch = block.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)
-        if (imgMatch)
-          return (
-            <div key={i} className="my-6 overflow-hidden rounded-xl">
-              <img src={imgMatch[2]} alt={imgMatch[1]} className="w-full object-cover max-h-72" />
-              {imgMatch[1] && <p className="mt-1.5 text-center text-xs text-gray-400 italic">{imgMatch[1]}</p>}
-            </div>
-          )
-
-        const isHeading =
-          block.length < 100 &&
-          !block.endsWith('.') &&
-          !block.endsWith(',') &&
-          !block.endsWith('?') &&
-          !block.includes('\n') &&
-          block.split(' ').length <= 14
-
-        if (isHeading)
-          return <h2 key={i} className="mt-8 mb-3 text-base font-bold text-gray-900 border-b border-gray-100 pb-2">{block}</h2>
-
-        return (
-          <p key={i} className="mb-4 text-sm leading-7 text-gray-700">
-            {block.split('\n').flatMap((line, j, arr) => [
-              ...renderInline(line),
-              ...(j < arr.length - 1 ? [<br key={`br-${j}`} />] : []),
-            ])}
-          </p>
-        )
-      })}
-    </div>
-  )
-}
+const BLOG_CSS = `
+.blog-render{max-width:860px;margin:0 auto;padding:1.5rem 2rem 2.5rem;font-family:Georgia,serif;line-height:1.85;color:#1a1a1a}
+.blog-render .hero-image,.blog-render figure.hero-image{margin:0 0 2rem;width:100%}
+.blog-render .hero-image img,.blog-render figure.hero-image img{width:100%;height:auto;display:block;border-radius:8px}
+.blog-render .inline-image,.blog-render figure.inline-image{margin:2rem auto;max-width:800px;display:block}
+.blog-render .inline-image img,.blog-render figure.inline-image img{width:100%;height:auto;display:block;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.12)}
+.blog-render figcaption{text-align:center;font-size:0.8rem;color:#777;margin-top:.5rem;font-style:italic}
+.blog-render h1{font-size:1.875rem;font-weight:700;margin:1.5rem 0 1rem;line-height:1.3}
+.blog-render h2{font-size:1.375rem;font-weight:600;margin:2rem 0 .75rem;line-height:1.3;border-bottom:1px solid #f0f0f0;padding-bottom:.4rem}
+.blog-render h3{font-size:1.1rem;font-weight:600;margin:1.5rem 0 .5rem}
+.blog-render p{margin:0 0 1.25rem}
+.blog-render ul,.blog-render ol{margin:1rem 0 1.5rem 1.5rem;padding:0}
+.blog-render li{margin-bottom:.5rem}
+.blog-render blockquote{border-left:4px solid #2d7a3e;margin:2rem 0;padding:1rem 1.5rem;background:#f0f7f1;border-radius:0 6px 6px 0}
+.blog-render blockquote p{margin:0 0 .5rem;font-style:italic}
+.blog-render blockquote cite{font-size:.85rem;color:#666}
+.blog-render .cta-button,.blog-render a.cta-button{display:inline-block;background:#2d7a3e;color:#fff;padding:.875rem 2rem;border-radius:6px;text-decoration:none;font-weight:600;margin-top:1rem}
+.blog-render .cta-section{background:#f0f7f1;border-radius:12px;padding:2rem;margin-top:2.5rem}
+.blog-render a{color:#2d7a3e;text-decoration:underline}
+.blog-render article.freshcan-blog-post{padding:0}
+`
 
 // ─── BlogCard ─────────────────────────────────────────────────────────────────
 
 function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: boolean; isNew: boolean }) {
   const [readOpen, setReadOpen] = useState(false)
   const [postOpen, setPostOpen] = useState(false)
+  const [heroLoaded, setHeroLoaded] = useState(false)
+  const [heroError, setHeroError] = useState(false)
 
-  const title     = item.output_data?.title ?? item.topic
-  const excerpt   = item.output_data?.excerpt ?? item.output_data?.content?.slice(0, 180) ?? null
-  const wordCount = item.output_data?.word_count
-  const tags      = item.output_data?.tags ?? []
-  const content   = item.output_data?.content ?? null
+  const od = item.output_data
+
+  // Support both old and new n8n format
+  const title      = od?.post_title    ?? od?.title    ?? item.topic
+  const excerpt    = od?.post_excerpt  ?? od?.excerpt  ?? (typeof od?.content === 'string' ? od.content.slice(0, 180) : null)
+  const htmlFinal  = od?.html_final    ?? od?.post_content ?? null
+  const heroUrl    = od?.images?.hero?.url ?? od?.hero_image_url ?? item.file_url ?? null
+  const heroAlt    = od?.images?.hero?.alt ?? title
+  const readTime   = od?.seo?.estimated_read_time ?? null
+  const keyword    = od?.focus_keyword ?? null
+  const wordCount  = od?.word_count    ?? null
+  const tags       = od?.tags          ?? []
+
+  const validHero = typeof heroUrl === 'string' && heroUrl.startsWith('http') ? heroUrl : null
+  const canRead   = !!(htmlFinal || validHero)
+
+  useEffect(() => { setHeroLoaded(false); setHeroError(false) }, [validHero])
 
   return (
     <>
-      <Card className="border bg-white shadow-sm transition-all hover:shadow-md">
+      <Card className="overflow-hidden border bg-white shadow-sm transition-all hover:shadow-md">
+        {/* Hero thumbnail */}
+        {validHero && !heroError ? (
+          <div
+            className="relative aspect-video cursor-pointer overflow-hidden bg-gray-100"
+            onClick={() => canRead && setReadOpen(true)}
+          >
+            <img
+              src={validHero}
+              alt={heroAlt}
+              className={`h-full w-full object-cover transition-all duration-300 hover:scale-105 ${heroLoaded ? 'opacity-100' : 'opacity-0'}`}
+              loading="lazy"
+              onLoad={() => setHeroLoaded(true)}
+              onError={() => setHeroError(true)}
+            />
+            <Badges isLatest={isLatest} isNew={isNew} />
+          </div>
+        ) : (
+          <div className="flex h-28 items-center justify-center border-b border-amber-100 bg-amber-50">
+            <BookOpen className="h-9 w-9 text-amber-400" />
+          </div>
+        )}
+
         <CardContent className="space-y-3 p-4">
-          {/* Header */}
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-100 bg-amber-50">
-              <BookOpen className="h-5 w-5 text-amber-600" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{title}</h3>
-                <div className="flex shrink-0 flex-col gap-1">
-                  {isLatest && (
-                    <span className="rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                      Latest
-                    </span>
-                  )}
-                  {isNew && !isLatest && (
-                    <span className="rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                      New
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-                <span>{item.category}</span>
-                <span className="text-gray-300">·</span>
-                <span>{item.language}</span>
-                {wordCount && (
-                  <>
-                    <span className="text-gray-300">·</span>
-                    <span>{wordCount.toLocaleString()} words</span>
-                  </>
-                )}
-              </div>
+          <div>
+            <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">{title}</h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+              <span>{item.category}</span>
+              <span className="text-gray-300">·</span>
+              <span>{item.language}</span>
+              {readTime && <><span className="text-gray-300">·</span><span>{readTime}</span></>}
+              {wordCount && <><span className="text-gray-300">·</span><span>{wordCount.toLocaleString()} words</span></>}
             </div>
           </div>
 
-          {excerpt && (
-            <p className="line-clamp-3 text-xs leading-relaxed text-gray-500">{excerpt}</p>
+          {keyword && (
+            <span className="inline-block rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">
+              {keyword}
+            </span>
           )}
 
-          {tags.length > 0 && (
+          {!keyword && tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {tags.slice(0, 4).map((tag) => (
+              {tags.slice(0, 3).map((tag) => (
                 <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
                   <Tag className="h-2.5 w-2.5" />{tag}
                 </span>
               ))}
             </div>
+          )}
+
+          {excerpt && (
+            <p className="line-clamp-2 text-xs leading-relaxed text-gray-500">{excerpt}</p>
           )}
 
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
@@ -826,18 +772,12 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
 
           {/* Actions */}
           <div className="grid grid-cols-3 gap-1.5 pt-0.5">
-            {(content || item.file_url) ? (
+            {canRead ? (
               <Button size="sm" variant="outline" className="text-xs" onClick={() => setReadOpen(true)}>
                 <BookOpen className="mr-1 h-3 w-3" />Read
               </Button>
-            ) : (
-              <div />
-            )}
-            <Button
-              size="sm"
-              className="bg-gray-900 text-xs hover:bg-gray-800 text-white"
-              onClick={() => setPostOpen(true)}
-            >
+            ) : <div />}
+            <Button size="sm" className="bg-gray-900 text-xs hover:bg-gray-800 text-white" onClick={() => setPostOpen(true)}>
               <Share2 className="mr-1 h-3 w-3" />Post
             </Button>
             {item.file_url ? (
@@ -846,48 +786,43 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
                   <ExternalLink className="mr-1 h-3 w-3" />Link
                 </Button>
               </a>
-            ) : (
-              <div />
-            )}
+            ) : <div />}
           </div>
         </CardContent>
       </Card>
 
       {/* Read modal */}
-      {(content || item.file_url) && (
+      {canRead && (
         <Dialog open={readOpen} onOpenChange={(v) => setReadOpen(v)}>
-          <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden max-h-[92vh] flex flex-col">
-            {/* Hero image */}
-            <BlogHero title={title} outputData={item.output_data} fileUrl={item.file_url ?? null} />
-
-            {/* Header meta row */}
+          <DialogContent className="sm:max-w-4xl gap-0 p-0 overflow-hidden max-h-[92vh] flex flex-col">
+            {/* Header */}
             <div className="shrink-0 border-b px-6 py-4">
-              <h2 className="text-xl font-bold leading-snug text-gray-900 mb-2">{title}</h2>
+              <h2 className="text-xl font-bold leading-snug text-gray-900 mb-1.5">{title}</h2>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                 <span className="font-medium text-gray-700">{item.category}</span>
                 <span className="text-gray-300">·</span>
                 <span>{item.language}</span>
-                {wordCount && <><span className="text-gray-300">·</span><span>{wordCount.toLocaleString()} words</span></>}
+                {readTime && <><span className="text-gray-300">·</span><span>{readTime} read</span></>}
+                {keyword && <><span className="text-gray-300">·</span><span className="font-medium text-green-700">{keyword}</span></>}
                 <span className="text-gray-300">·</span>
                 <span>{formatDateTime(item.completed_at)}</span>
               </div>
-              {tags.length > 0 && (
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  {tags.map((tag) => (
-                    <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
-                      <Tag className="h-2.5 w-2.5" />{tag}
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Body */}
-            {content && (
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                <BlogContentRenderer content={content} />
-              </div>
-            )}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {htmlFinal ? (
+                <>
+                  <style>{BLOG_CSS}</style>
+                  <div className="blog-render" dangerouslySetInnerHTML={{ __html: htmlFinal }} />
+                </>
+              ) : validHero ? (
+                <div className="p-6 flex flex-col items-center gap-4">
+                  <img src={validHero} alt={heroAlt} className="w-full rounded-xl object-cover max-h-80" />
+                  {excerpt && <p className="text-sm text-gray-600 leading-7 max-w-prose">{excerpt}</p>}
+                </div>
+              ) : null}
+            </div>
 
             {/* Footer */}
             <div className="flex shrink-0 items-center justify-between border-t bg-gray-50 px-5 py-3">
@@ -908,7 +843,7 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
 
       {/* Post modal */}
       <PostModal
-        target={{ job_id: item.job_id, topic: item.topic, content_type: 'blog', media_url: item.file_url ?? null, media_type: 'blog' }}
+        target={{ job_id: item.job_id, topic: title, content_type: 'blog', media_url: validHero ?? item.file_url ?? null, media_type: 'blog' }}
         open={postOpen}
         onClose={() => setPostOpen(false)}
       />
