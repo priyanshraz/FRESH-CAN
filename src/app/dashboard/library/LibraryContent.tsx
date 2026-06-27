@@ -611,33 +611,37 @@ function ImageCard({ item, isLatest, isNew, isHighlighted }: { item: ImageLibrar
 
       {/* View modal */}
       <Dialog open={viewOpen} onOpenChange={(v) => setViewOpen(v)}>
-        <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden">
-          <div className="flex max-h-[75vh] items-center justify-center overflow-hidden bg-gray-100">
-            <img src={item.image_url} alt={item.topic} className="max-h-[75vh] max-w-full object-contain" />
+        <DialogContent className="sm:max-w-3xl gap-0 p-0 flex flex-col max-h-[92vh] overflow-hidden">
+          {/* Image — shrinks if tall, never overflows */}
+          <div className="flex shrink-0 items-center justify-center overflow-hidden bg-gray-100" style={{ maxHeight: '60vh' }}>
+            <img src={item.image_url} alt={item.topic} className="max-h-[60vh] max-w-full object-contain" />
           </div>
-          <div className="flex items-start justify-between gap-4 p-4">
-            <div className="min-w-0 flex-1">
-              <h3 className="font-semibold leading-snug text-gray-900">{item.topic}</h3>
-              <p className="mt-1 text-sm text-gray-500">{item.category}{item.language ? ` · ${item.language}` : ''}</p>
-              {item.caption && <p className="mt-1.5 text-sm leading-relaxed text-gray-700">{item.caption}</p>}
-              {item.hashtags.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {item.hashtags.map((tag, i) => (
-                    <span key={i} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-600">
-                      {tag.startsWith('#') ? tag : `#${tag}`}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <p className="mt-1.5 text-xs text-gray-400">{formatDateTime(item.completed_at)}</p>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => { setViewOpen(false); setPostOpen(true) }}>
-                <Share2 className="mr-1.5 h-3.5 w-3.5" />Post
-              </Button>
-              <a href={item.image_url} download={filename}>
-                <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" />Download</Button>
-              </a>
+          {/* Scrollable info section */}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 p-4">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold leading-snug text-gray-900">{item.topic}</h3>
+                <p className="mt-1 text-sm text-gray-500">{item.category}{item.language ? ` · ${item.language}` : ''}</p>
+                {item.caption && <p className="mt-1.5 text-sm leading-relaxed text-gray-700">{item.caption}</p>}
+                {item.hashtags.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {item.hashtags.map((tag, i) => (
+                      <span key={i} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-600">
+                        {tag.startsWith('#') ? tag : `#${tag}`}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-1.5 text-xs text-gray-400">{formatDateTime(item.completed_at)}</p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" onClick={() => { setViewOpen(false); setPostOpen(true) }}>
+                  <Share2 className="mr-1.5 h-3.5 w-3.5" />Post
+                </Button>
+                <a href={item.image_url} download={filename}>
+                  <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" />Download</Button>
+                </a>
+              </div>
             </div>
           </div>
         </DialogContent>
