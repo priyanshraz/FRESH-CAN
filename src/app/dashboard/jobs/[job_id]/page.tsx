@@ -1824,8 +1824,8 @@ export default function JobDetailPage() {
         </div>
       )}
 
-      {/* Video generating banner */}
-      {isGenerating && (
+      {/* Video generating banner — only when video is actually one of the content types */}
+      {isGenerating && (job.content_types as ContentType[]).includes('video') && (
         <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
           <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-blue-500" />
           <div>
