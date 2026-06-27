@@ -115,6 +115,7 @@ interface BlogEditState {
   cta: BlogCTA
   seo: BlogSEO
   images: BlogImages
+  html_final: string | null
 }
 
 function strVal(v: unknown, fallback = ''): string {
@@ -194,6 +195,7 @@ function blogEditFromDraft(data: Record<string, unknown>): BlogEditState {
       hero:   { url: strVal(heroRaw.url),   alt: strVal(heroRaw.alt) },
       inline: { url: strVal(inlineRaw.url), alt: strVal(inlineRaw.alt) },
     },
+    html_final: typeof d.html_final === 'string' && d.html_final ? d.html_final : null,
   }
 }
 
@@ -203,6 +205,7 @@ function blogEditToDraftData(edit: BlogEditState): Record<string, unknown> {
     post_slug:    edit.post_slug,
     post_status:  edit.post_status,
     generated_at: edit.generated_at,
+    html_final:   edit.html_final ?? undefined,
     seo:          { ...edit.seo, slug: edit.post_slug },
     content: {
       introduction: edit.intro,
@@ -1553,8 +1556,7 @@ export default function JobDetailPage() {
         (n, s) => n + s.paragraphs.join(' ').split(' ').length,
         0,
       )
-      // Preserve html_final from original n8n draft so Library can render full blog
-      const originalHtmlFinal = (draft.draft_data as Record<string, unknown>)?.html_final ?? null
+      // html_final preserved through BlogEditState — use it directly
       await supabase.from('generated_content').upsert(
         {
           job_id,
@@ -1566,7 +1568,7 @@ export default function JobDetailPage() {
             post_slug:           be.post_slug,
             post_excerpt:        be.seo.meta_description,
             focus_keyword:       be.seo.focus_keyword,
-            html_final:          originalHtmlFinal,
+            html_final:          be.html_final ?? null,
             hero_image_url:      be.images.hero.url  || null,
             inline_image_url:    be.images.inline.url || null,
             images: {

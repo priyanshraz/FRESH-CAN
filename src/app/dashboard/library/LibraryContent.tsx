@@ -681,6 +681,62 @@ const BLOG_CSS = `
 .blog-render article.freshcan-blog-post{padding:0}
 `
 
+// ─── Blog reconstruction helpers ─────────────────────────────────────────────
+
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function reconstructBlogHtml(d: Record<string, unknown>): string {
+  const content    = (d.content as Record<string, unknown>) ?? {}
+  const intro      = typeof content.introduction === 'string' ? content.introduction : ''
+  const conclusion = typeof content.conclusion   === 'string' ? content.conclusion   : ''
+  const sections   = Array.isArray(content.sections) ? (content.sections as Record<string, unknown>[]) : []
+  const ctaRaw     = (content.cta as Record<string, unknown>) ?? {}
+  const imgs       = (d.images   as Record<string, unknown>) ?? {}
+  const inlineImg  = (imgs.inline as Record<string, unknown>) ?? {}
+
+  if (!intro && sections.length === 0) return ''
+
+  let html = '<article class="freshcan-blog-post">'
+
+  if (intro) html += `<p>${esc(intro)}</p>`
+
+  sections.forEach((s, i) => {
+    const heading   = typeof s.heading === 'string' ? s.heading : ''
+    const paras     = Array.isArray(s.paragraphs)  ? (s.paragraphs  as string[]).filter(Boolean) : []
+    const h3s       = Array.isArray(s.h3s)         ? (s.h3s         as string[]).filter(Boolean) : []
+    const listItems = Array.isArray(s.list_items)  ? (s.list_items  as string[]).filter(Boolean) : []
+    const bq        = (s.blockquote as Record<string, unknown> | null) ?? null
+
+    if (heading) html += `<h2>${esc(heading)}</h2>`
+    h3s.forEach(h => { html += `<h3>${esc(h)}</h3>` })
+    paras.forEach(p => { html += `<p>${esc(p)}</p>` })
+    if (listItems.length) html += '<ul>' + listItems.map(li => `<li>${esc(li)}</li>`).join('') + '</ul>'
+    if (bq && typeof bq.text === 'string') {
+      html += `<blockquote><p>${esc(bq.text)}</p>${bq.cite ? `<cite>${esc(String(bq.cite))}</cite>` : ''}</blockquote>`
+    }
+    if (i === 0 && typeof inlineImg.url === 'string' && (inlineImg.url as string).startsWith('http')) {
+      html += `<figure class="inline-image"><img src="${inlineImg.url as string}" alt="${esc(String(inlineImg.alt ?? ''))}" /></figure>`
+    }
+  })
+
+  if (conclusion) html += `<p>${esc(conclusion)}</p>`
+
+  if (ctaRaw.heading || ctaRaw.text) {
+    html += '<div class="cta-section">'
+    if (typeof ctaRaw.heading === 'string') html += `<h2>${esc(ctaRaw.heading)}</h2>`
+    if (typeof ctaRaw.text    === 'string') html += `<p>${esc(ctaRaw.text)}</p>`
+    if (typeof ctaRaw.button_label === 'string' && typeof ctaRaw.button_url === 'string') {
+      html += `<a href="${esc(ctaRaw.button_url)}" class="cta-button">${esc(ctaRaw.button_label)}</a>`
+    }
+    html += '</div>'
+  }
+
+  html += '</article>'
+  return html
+}
+
 // ─── BlogCard ─────────────────────────────────────────────────────────────────
 
 function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: boolean; isNew: boolean }) {
@@ -727,9 +783,13 @@ function BlogCard({ item, isLatest, isNew }: { item: BlogLibraryItem; isLatest: 
       .maybeSingle()
       .then(({ data }) => {
         if (data?.draft_data) {
-          const dd  = data.draft_data as Record<string, unknown>
-          const html = typeof dd.html_final === 'string' ? dd.html_final : null
+          const dd = data.draft_data as Record<string, unknown>
+          // Use html_final if present, otherwise reconstruct from structured content
+          const html = typeof dd.html_final === 'string' && dd.html_final
+            ? dd.html_final
+            : reconstructBlogHtml(dd)
           if (html) setDraftHtml(html)
+          // Extract inline image for the preview row
           const imgs = dd.images as Record<string, unknown> | undefined
           const inl  = imgs?.inline as Record<string, unknown> | undefined
           if (typeof inl?.url === 'string' && (inl.url as string).startsWith('http')) {
