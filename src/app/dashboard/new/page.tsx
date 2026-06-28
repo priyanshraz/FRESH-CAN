@@ -140,8 +140,18 @@ export default function NewContentPage() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
 
+  // Pending job — persists until all content is approved
+  const [pendingJob, setPendingJob] = useState<{ id: string; topic: string; types: ContentType[] } | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem('fc_pending_job')
+        if (saved) return JSON.parse(saved)
+      } catch (_) {}
+    }
+    return null
+  })
+
   const [form, setForm] = useState<FormData>(() => {
-    // Restore from sessionStorage so navigating away doesn't lose the draft
     if (typeof window !== 'undefined') {
       try {
         const saved = sessionStorage.getItem('fc_new_form')
@@ -164,6 +174,20 @@ export default function NewContentPage() {
   useEffect(() => {
     try { sessionStorage.setItem('fc_new_form', JSON.stringify(form)) } catch (_) {}
   }, [form])
+
+  const clearPending = () => {
+    try {
+      sessionStorage.removeItem('fc_pending_job')
+      sessionStorage.removeItem('fc_new_form')
+    } catch (_) {}
+    setPendingJob(null)
+    setForm({
+      topic: '', keywords: '', category: 'Food Desert Education',
+      target_audience: 'General public', script_type: 'SOLUTION',
+      video_duration: '36', language: 'EN',
+      content_types: ['video', 'image_post', 'blog'],
+    })
+  }
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
     setForm((p) => ({ ...p, [key]: value }))
@@ -247,13 +271,43 @@ export default function NewContentPage() {
       return
     }
 
-    // Clear saved form — content has been submitted
-    try { sessionStorage.removeItem('fc_new_form') } catch (_) {}
+    // Save pending job — keep form alive until all content is approved
+    const pending = { id: job.id, topic: form.topic.trim(), types: form.content_types }
+    try { sessionStorage.setItem('fc_pending_job', JSON.stringify(pending)) } catch (_) {}
+    setPendingJob(pending)
     router.push(`/dashboard/jobs/${job.id}`)
   }
 
   return (
     <div className="mx-auto max-w-[600px] py-6">
+
+      {/* Pending job banner */}
+      {pendingJob && (
+        <div className="mb-5 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
+            <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-amber-900">Content generation in progress</p>
+            <p className="truncate text-xs text-amber-700">{pendingJob.topic}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href={`/dashboard/jobs/${pendingJob.id}`}
+              className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
+            >
+              View Job →
+            </Link>
+            <button
+              type="button"
+              onClick={clearPending}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Start New
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Page header */}
       <div className="mb-6">
