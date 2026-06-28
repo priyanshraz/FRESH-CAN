@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -140,16 +140,30 @@ export default function NewContentPage() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  const [form, setForm] = useState<FormData>({
-    topic:           '',
-    keywords:        '',
-    category:        'Food Desert Education',
-    target_audience: 'General public',
-    script_type:     'SOLUTION',
-    video_duration:  '36',
-    language:        'EN',
-    content_types:   ['video', 'image_post', 'blog'], // all on by default
+  const [form, setForm] = useState<FormData>(() => {
+    // Restore from sessionStorage so navigating away doesn't lose the draft
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem('fc_new_form')
+        if (saved) return JSON.parse(saved) as FormData
+      } catch (_) {}
+    }
+    return {
+      topic:           '',
+      keywords:        '',
+      category:        'Food Desert Education',
+      target_audience: 'General public',
+      script_type:     'SOLUTION',
+      video_duration:  '36',
+      language:        'EN',
+      content_types:   ['video', 'image_post', 'blog'],
+    }
   })
+
+  // Persist form to sessionStorage on every change
+  useEffect(() => {
+    try { sessionStorage.setItem('fc_new_form', JSON.stringify(form)) } catch (_) {}
+  }, [form])
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
     setForm((p) => ({ ...p, [key]: value }))
@@ -233,6 +247,8 @@ export default function NewContentPage() {
       return
     }
 
+    // Clear saved form — content has been submitted
+    try { sessionStorage.removeItem('fc_new_form') } catch (_) {}
     router.push(`/dashboard/jobs/${job.id}`)
   }
 
