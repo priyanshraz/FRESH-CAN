@@ -13,6 +13,7 @@ import ScriptPartCard from '@/components/dashboard/ScriptPartCard'
 import type { ScriptPart } from '@/components/dashboard/ScriptPartCard'
 import { supabase } from '@/lib/supabase'
 import { useContentJobStore } from '@/stores/contentJobStore'
+import { useNewContentStore } from '@/stores/newContentStore'
 import {
   AlertCircle,
   CheckCircle2,
@@ -1054,6 +1055,7 @@ export default function JobDetailPage() {
   const router = useRouter()
 
   const { addJob } = useContentJobStore()
+  const { clearAfterApproval } = useNewContentStore()
 
   const [loading, setLoading]     = useState(true)
   const [job, setJob]             = useState<ContentJob | null>(null)
@@ -1381,21 +1383,6 @@ export default function JobDetailPage() {
     // regenLoading clears when realtime UPDATE arrives with status 'draft_ready'
   }
 
-  // Clear new-content form session once ALL types for this job are approved
-  const clearPendingSession = (approvedSet: Set<ContentType>) => {
-    if (!job) return
-    const allDone = (job.content_types as ContentType[]).every((t) => approvedSet.has(t))
-    if (!allDone) return
-    try {
-      const raw = sessionStorage.getItem('fc_pending_job')
-      if (!raw) return
-      const pj = JSON.parse(raw) as { id: string }
-      if (pj.id !== job_id) return
-      sessionStorage.removeItem('fc_pending_job')
-      sessionStorage.removeItem('fc_new_form')
-    } catch (_) {}
-  }
-
   // ── Video approve handler ────────────────────────────────────────────────────
 
   const handleVideoApprove = async () => {
@@ -1470,7 +1457,7 @@ export default function JobDetailPage() {
     setJob((prev) => prev ? { ...prev, status: 'generating' } : prev)
     setApproving(null)
     addJob({ jobId: job_id, topic: job.topic, type: 'video', status: 'generating', progress: 0 })
-    clearPendingSession(newApprovedVideo)
+    clearAfterApproval(job_id)
     // Multi-type: redirect to tracker when all content types are approved
     const allTypesVideo = (job.content_types as ContentType[])
     if (allTypesVideo.length > 1 && allTypesVideo.every((t) => newApprovedVideo.has(t))) {
@@ -1496,7 +1483,7 @@ export default function JobDetailPage() {
       setJob((prev) => prev ? { ...prev, status: 'approved' } : prev)
       setApproving(null)
       addJob({ jobId: job_id, topic: job.topic, type: 'image_post', status: 'completed', progress: 100 })
-      clearPendingSession(newApproved)
+      clearAfterApproval(job_id)
       const allTypes = (job.content_types as ContentType[])
       if (allTypes.length > 1) {
         if (allTypes.every((t) => newApproved.has(t))) {
@@ -1620,7 +1607,7 @@ export default function JobDetailPage() {
       addJob({ jobId: job_id, topic: blogTopic, type: 'blog', status: 'completed', progress: 100 })
     }
     setApproving(null)
-    clearPendingSession(newApprovedFinal)
+    clearAfterApproval(job_id)
     // Multi-type: redirect to tracker when all content types are approved
     const allTypesFinal = (job.content_types as ContentType[])
     if (allTypesFinal.length > 1 && allTypesFinal.every((t) => newApprovedFinal.has(t))) {

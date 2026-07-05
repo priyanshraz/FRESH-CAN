@@ -24,12 +24,10 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useNewContentStore } from '@/stores/newContentStore'
+import type { ContentType, ScriptType, Language } from '@/stores/newContentStore'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type ContentType = 'video' | 'image_post' | 'blog'
-type ScriptType  = 'SOLUTION' | 'COMMUNITY'
-type Language    = 'EN' | 'FR' | 'BOTH'
+// ─── Local types ──────────────────────────────────────────────────────────────
 
 interface FormData {
   topic:           string
@@ -95,7 +93,6 @@ const CONTENT_TYPES: {
   },
 ]
 
-// Builds the exact payload each n8n webhook expects
 function buildPayload(
   jobId: string,
   form: FormData,
@@ -111,21 +108,13 @@ function buildPayload(
     brand:           'Fresh-CAN',
     content_type:    type,
   }
-  // script_type and video_duration only go to the video webhook
   if (type === 'video') {
     return { ...base, script_type: form.script_type, video_duration: form.video_duration }
   }
   return base
 }
 
-// Inline label component (no ShadCN label installed)
-function FL({
-  children,
-  htmlFor,
-}: {
-  children: React.ReactNode
-  htmlFor?: string
-}) {
+function FL({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
   return (
     <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700">
       {children}
@@ -140,90 +129,38 @@ export default function NewContentPage() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  // Pending job — persists until all content is approved
-  const [pendingJob, setPendingJob] = useState<{ id: string; topic: string; types: ContentType[] } | null>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = sessionStorage.getItem('fc_pending_job')
-        if (saved) return JSON.parse(saved)
-      } catch (_) {}
-    }
-    return null
-  })
+  const {
+    topic, keywords, category, target_audience, script_type, video_duration,
+    language, content_types, status, pendingJobId,
+    restoreSession, setField, toggleType, startGeneration, clearOnCancel,
+  } = useNewContentStore()
 
-  const [form, setForm] = useState<FormData>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = sessionStorage.getItem('fc_new_form')
-        if (saved) return JSON.parse(saved) as FormData
-      } catch (_) {}
-    }
-    return {
-      topic:           '',
-      keywords:        '',
-      category:        'Food Desert Education',
-      target_audience: 'General public',
-      script_type:     'SOLUTION',
-      video_duration:  '36',
-      language:        'EN',
-      content_types:   ['video', 'image_post', 'blog'],
-    }
-  })
-
-  // Persist form to sessionStorage on every change
   useEffect(() => {
-    try { sessionStorage.setItem('fc_new_form', JSON.stringify(form)) } catch (_) {}
-  }, [form])
+    restoreSession()
+  }, [restoreSession])
 
-  const clearPending = () => {
-    try {
-      sessionStorage.removeItem('fc_pending_job')
-      sessionStorage.removeItem('fc_new_form')
-    } catch (_) {}
-    setPendingJob(null)
-    setForm({
-      topic: '', keywords: '', category: 'Food Desert Education',
-      target_audience: 'General public', script_type: 'SOLUTION',
-      video_duration: '36', language: 'EN',
-      content_types: ['video', 'image_post', 'blog'],
-    })
-  }
-
-  const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
-    setForm((p) => ({ ...p, [key]: value }))
-
-  const toggleType = (type: ContentType) =>
-    setForm((p) => ({
-      ...p,
-      content_types: p.content_types.includes(type)
-        ? p.content_types.filter((t) => t !== type)
-        : [...p.content_types, type],
-    }))
-
-  const videoOn = form.content_types.includes('video')
   const isSubmitting = phase !== 'idle'
+  const videoOn = content_types.includes('video')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    // Validate
-    if (!form.topic.trim())              return setError('Topic is required')
-    if (!form.keywords.trim())           return setError('Keywords are required')
-    if (form.content_types.length === 0) return setError('Select at least one content type')
+    if (!topic.trim())              return setError('Topic is required')
+    if (!keywords.trim())           return setError('Keywords are required')
+    if (content_types.length === 0) return setError('Select at least one content type')
 
-    // Step 1 — insert Supabase row
     setPhase('creating')
     const { data: job, error: insertError } = await supabase
       .from('content_jobs')
       .insert({
-        topic:           form.topic.trim(),
-        keywords:        form.keywords.trim(),
-        category:        form.category,
-        target_audience: form.target_audience,
+        topic:           topic.trim(),
+        keywords:        keywords.trim(),
+        category,
+        target_audience,
         brand:           'Fresh-CAN',
-        language:        form.language,
-        content_types:   form.content_types,
+        language,
+        content_types,
         status:          'pending',
       })
       .select()
@@ -235,16 +172,19 @@ export default function NewContentPage() {
       return
     }
 
-    // Step 2 — fire all selected webhooks and WAIT for results
     setPhase('triggering')
+    const formSnapshot: FormData = {
+      topic, keywords, category, target_audience,
+      script_type, video_duration, language, content_types,
+    }
     const results = await Promise.allSettled(
-      form.content_types.map(async (type) => {
+      content_types.map(async (type) => {
         const res = await fetch('/api/n8n/trigger', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type,
-            payload: buildPayload(job.id, form, type),
+            payload: buildPayload(job.id, formSnapshot, type),
           }),
         })
         if (!res.ok) {
@@ -255,14 +195,12 @@ export default function NewContentPage() {
       }),
     )
 
-    // Stamp webhook_sent_at regardless of outcome
     supabase
       .from('content_jobs')
       .update({ webhook_sent_at: new Date().toISOString() })
       .eq('id', job.id)
-      .then(() => { /* fire-and-forget */ })
+      .then(() => {})
 
-    // Surface any webhook failures — don't silently swallow them
     const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
     if (failed.length > 0) {
       const msgs = failed.map((r) => (r.reason as Error).message).join(' · ')
@@ -271,36 +209,46 @@ export default function NewContentPage() {
       return
     }
 
-    // Save pending job — keep form alive until all content is approved
-    const pending = { id: job.id, topic: form.topic.trim(), types: form.content_types }
-    try { sessionStorage.setItem('fc_pending_job', JSON.stringify(pending)) } catch (_) {}
-    setPendingJob(pending)
+    // Persist session — cleared only after all content types are approved
+    startGeneration(job.id)
     router.push(`/dashboard/jobs/${job.id}`)
+  }
+
+  const handleCancel = () => {
+    if (status === 'pending') {
+      const ok = window.confirm('Content is being generated. Cancel and lose all progress?')
+      if (!ok) return
+    }
+    clearOnCancel()
+    router.push('/dashboard')
   }
 
   return (
     <div className="mx-auto max-w-[600px] py-6">
 
-      {/* Pending job banner */}
-      {pendingJob && (
+      {/* ── Pending-job banner (shown when returning mid-generation) ── */}
+      {status === 'pending' && pendingJobId && (
         <div className="mb-5 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
             <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-amber-900">Content generation in progress</p>
-            <p className="truncate text-xs text-amber-700">{pendingJob.topic}</p>
+            <p className="truncate text-xs text-amber-700">{topic}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Link
-              href={`/dashboard/jobs/${pendingJob.id}`}
+              href={`/dashboard/jobs/${pendingJobId}`}
               className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
             >
               View Job →
             </Link>
             <button
               type="button"
-              onClick={clearPending}
+              onClick={() => {
+                const ok = window.confirm('Cancel this generation and start a new request?')
+                if (ok) clearOnCancel()
+              }}
               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
             >
               Start New
@@ -335,8 +283,8 @@ export default function NewContentPage() {
               <FL htmlFor="topic">Topic <span className="text-red-500">*</span></FL>
               <Input
                 id="topic"
-                value={form.topic}
-                onChange={(e) => set('topic', e.target.value)}
+                value={topic}
+                onChange={(e) => setField('topic', e.target.value)}
                 placeholder="e.g. Food Deserts in Calgary"
                 disabled={isSubmitting}
               />
@@ -346,8 +294,8 @@ export default function NewContentPage() {
               <FL htmlFor="keywords">Keywords <span className="text-red-500">*</span></FL>
               <Input
                 id="keywords"
-                value={form.keywords}
-                onChange={(e) => set('keywords', e.target.value)}
+                value={keywords}
+                onChange={(e) => setField('keywords', e.target.value)}
                 placeholder="food desert, mobile grocery, fresh food, Canada"
                 disabled={isSubmitting}
               />
@@ -357,8 +305,8 @@ export default function NewContentPage() {
             <div className="space-y-1.5">
               <FL>Content Category <span className="text-red-500">*</span></FL>
               <Select
-                value={form.category}
-                onValueChange={(v) => { if (v) set('category', v) }}
+                value={category}
+                onValueChange={(v) => { if (v) setField('category', v) }}
                 disabled={isSubmitting}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -373,8 +321,8 @@ export default function NewContentPage() {
             <div className="space-y-1.5">
               <FL>Target Audience <span className="text-red-500">*</span></FL>
               <Select
-                value={form.target_audience}
-                onValueChange={(v) => { if (v) set('target_audience', v) }}
+                value={target_audience}
+                onValueChange={(v) => { if (v) setField('target_audience', v) }}
                 disabled={isSubmitting}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -389,8 +337,8 @@ export default function NewContentPage() {
             <div className="space-y-1.5">
               <FL>Language <span className="text-red-500">*</span></FL>
               <Select
-                value={form.language}
-                onValueChange={(v) => { if (v) set('language', v as Language) }}
+                value={language}
+                onValueChange={(v) => { if (v) setField('language', v as Language) }}
                 disabled={isSubmitting}
               >
                 <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
@@ -417,7 +365,7 @@ export default function NewContentPage() {
           </CardHeader>
           <CardContent className="space-y-3 pt-4">
             {CONTENT_TYPES.map(({ id, label, description, icon, iconBg }) => {
-              const checked = form.content_types.includes(id)
+              const checked = content_types.includes(id)
               return (
                 <label
                   key={id}
@@ -446,7 +394,7 @@ export default function NewContentPage() {
           </CardContent>
         </Card>
 
-        {/* ── Section 3: Video Settings (shown only when Video is checked) */}
+        {/* ── Section 3: Video Settings ───────────────────────────────── */}
         {videoOn && (
           <Card className="border border-purple-200 bg-purple-50/30 shadow-sm">
             <CardHeader className="border-b border-purple-200 py-4">
@@ -460,8 +408,8 @@ export default function NewContentPage() {
               <div className="space-y-1.5">
                 <FL>Script Type <span className="text-red-500">*</span></FL>
                 <Select
-                  value={form.script_type}
-                  onValueChange={(v) => { if (v) set('script_type', v as ScriptType) }}
+                  value={script_type}
+                  onValueChange={(v) => { if (v) setField('script_type', v as ScriptType) }}
                   disabled={isSubmitting}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -471,7 +419,7 @@ export default function NewContentPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500">
-                  {form.script_type === 'SOLUTION'
+                  {script_type === 'SOLUTION'
                     ? 'Data-driven, community advocate perspective'
                     : 'First-person, food-insecure person perspective'}
                 </p>
@@ -480,8 +428,8 @@ export default function NewContentPage() {
               <div className="space-y-1.5">
                 <FL>Video Duration <span className="text-red-500">*</span></FL>
                 <Select
-                  value={form.video_duration}
-                  onValueChange={(v) => { if (v) set('video_duration', v) }}
+                  value={video_duration}
+                  onValueChange={(v) => { if (v) setField('video_duration', v) }}
                   disabled={isSubmitting}
                 >
                   <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
@@ -508,7 +456,7 @@ export default function NewContentPage() {
         {/* Submit */}
         <Button
           type="submit"
-          disabled={isSubmitting || form.content_types.length === 0}
+          disabled={isSubmitting || content_types.length === 0}
           size="lg"
           className="w-full bg-gray-900 py-6 text-base font-semibold hover:bg-gray-800 disabled:opacity-50"
         >
@@ -519,24 +467,25 @@ export default function NewContentPage() {
           ) : (
             <>
               <Sparkles className="mr-2 h-5 w-5" />
-              {form.content_types.length === 3
+              {content_types.length === 3
                 ? 'Generate All 3 Content Types'
-                : form.content_types.length === 0
+                : content_types.length === 0
                   ? 'Select a content type'
-                  : `Generate ${form.content_types.length} Content Type${form.content_types.length > 1 ? 's' : ''}`}
+                  : `Generate ${content_types.length} Content Type${content_types.length > 1 ? 's' : ''}`}
             </>
           )}
         </Button>
 
         {/* Cancel */}
         <div className="text-center">
-          <Link
-            href="/dashboard"
+          <button
+            type="button"
+            onClick={handleCancel}
             className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Cancel — back to Dashboard
-          </Link>
+          </button>
         </div>
 
       </form>

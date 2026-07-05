@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import KPICard from '@/components/KPICard'
 import TopBar from '@/components/layout/TopBar'
 import { KPIRowSkeleton } from '@/components/skeletons/Skeleton'
+import ActiveGenerationBanner from '@/components/ActiveGenerationBanner'
 import {
   getKPIData,
   getVideoLibrary,
@@ -370,6 +371,9 @@ export default function DashboardPage() {
           </Button>
         }
       />
+
+      {/* Active generation banner */}
+      <ActiveGenerationBanner />
 
       {/* KPI Cards */}
       {loading ? (
