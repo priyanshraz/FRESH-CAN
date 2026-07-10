@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 import VideoToast from '@/components/VideoToast'
 import type { VideoNotification } from '@/components/VideoToast'
@@ -10,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [notification, setNotification] = useState<VideoNotification | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     const channel = supabase
@@ -55,14 +57,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => { supabase.removeChannel(channel) }
   }, [])
 
-  // Don't show the toast when the user is already on the library page
   const isOnLibrary = pathname === '/dashboard/library'
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Sidebar />
-      <main className="pl-64">
-        <div className="p-8">{children}</div>
+
+      {/* ── Mobile top header (hidden on md+) ──────────────────────── */}
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 md:hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="https://jbrktjnscnzmhwupojiu.supabase.co/storage/v1/object/public/assets/freshcan-logo-white.jpeg"
+          alt="Fresh-CAN"
+          className="h-7 w-auto max-w-[120px] rounded object-contain"
+        />
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 active:bg-gray-100"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      </header>
+
+      {/* Sidebar — desktop fixed, mobile overlay */}
+      <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      {/* Main content */}
+      <main className="md:pl-64">
+        <div className="p-4 sm:p-6 md:p-8">{children}</div>
       </main>
 
       {notification && !isOnLibrary && (

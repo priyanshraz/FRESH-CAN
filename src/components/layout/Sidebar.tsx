@@ -6,8 +6,14 @@ import {
   LayoutDashboard,
   PlusCircle,
   Library,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+interface SidebarProps {
+  mobileOpen?: boolean
+  onClose?: () => void
+}
 
 const navItems = [
   {
@@ -15,82 +21,110 @@ const navItems = [
     label: 'Dashboard',
     icon: LayoutDashboard,
     exact: true,
-    description: 'Overview & recent jobs',
   },
   {
     href: '/dashboard/new',
     label: 'New Content',
     icon: PlusCircle,
     exact: false,
-    description: 'Submit a content job',
   },
   {
     href: '/dashboard/library',
     label: 'Library',
     icon: Library,
     exact: false,
-    description: 'All generated content',
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname()
 
   const isActive = (href: string, exact: boolean) =>
     exact ? pathname === href : pathname.startsWith(href)
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-gray-200 bg-white">
-      {/* Brand */}
-      <div className="flex h-16 flex-col items-start justify-center border-b border-gray-200 px-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="https://jbrktjnscnzmhwupojiu.supabase.co/storage/v1/object/public/assets/freshcan-logo-white.jpeg"
-          alt="Fresh-CAN"
-          className="h-9 w-auto max-w-[160px] rounded-md object-contain"
-        />
-        <p className="mt-0.5 text-[10px] text-gray-400 pl-0.5">Content Studio</p>
-      </div>
+    <>
+      {/* Mobile backdrop */}
+      <div
+        className={cn(
+          'fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 md:hidden',
+          mobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+        )}
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
-      {/* Nav */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-        <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-          Menu
-        </p>
-        {navItems.map(({ href, label, icon: Icon, exact }) => {
-          const active = isActive(href, exact)
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
-                active
-                  ? 'bg-green-600 text-white shadow-sm'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
-              )}
-            >
-              <Icon
-                className={cn(
-                  'h-4 w-4 flex-shrink-0 transition-transform group-hover:scale-110',
-                  active ? 'text-white' : 'text-gray-400 group-hover:text-gray-600',
-                )}
-              />
-              {label}
-            </Link>
-          )
-        })}
-      </nav>
-
-      {/* Footer */}
-      <div className="border-t border-gray-200 p-4">
-        <div className="rounded-lg bg-green-50 px-3 py-2.5">
-          <p className="text-xs font-semibold text-green-700">Fresh-CAN Brand</p>
-          <p className="mt-0.5 text-[10px] text-green-600">
-            AI Content Automation v1.0
-          </p>
+      {/* Sidebar panel */}
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200 bg-white',
+          'transition-transform duration-300 ease-in-out',
+          // Mobile: slide in/out
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          // Desktop: always visible
+          'md:translate-x-0',
+        )}
+      >
+        {/* Brand */}
+        <div className="flex h-16 flex-shrink-0 items-center justify-between border-b border-gray-200 px-4">
+          <div className="min-w-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://jbrktjnscnzmhwupojiu.supabase.co/storage/v1/object/public/assets/freshcan-logo-white.jpeg"
+              alt="Fresh-CAN"
+              className="h-9 w-auto max-w-[140px] rounded-md object-contain"
+            />
+            <p className="mt-0.5 pl-0.5 text-[10px] text-gray-400">Content Studio</p>
+          </div>
+          {/* Close button — mobile only */}
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 md:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
-      </div>
-    </aside>
+
+        {/* Nav */}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
+          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+            Menu
+          </p>
+          {navItems.map(({ href, label, icon: Icon, exact }) => {
+            const active = isActive(href, exact)
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={onClose}
+                className={cn(
+                  'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+                  active
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+                )}
+              >
+                <Icon
+                  className={cn(
+                    'h-4 w-4 flex-shrink-0 transition-transform group-hover:scale-110',
+                    active ? 'text-white' : 'text-gray-400 group-hover:text-gray-600',
+                  )}
+                />
+                {label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 border-t border-gray-200 p-4">
+          <div className="rounded-lg bg-green-50 px-3 py-2.5">
+            <p className="text-xs font-semibold text-green-700">Fresh-CAN Brand</p>
+            <p className="mt-0.5 text-[10px] text-green-600">AI Content Automation v1.0</p>
+          </div>
+        </div>
+      </aside>
+    </>
   )
 }

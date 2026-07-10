@@ -41,11 +41,32 @@ import {
   Tag,
 } from 'lucide-react'
 
+// ─── Blog HTML styles ─────────────────────────────────────────────────────────
+
+const BLOG_CSS = `
+.db-blog{max-width:760px;margin:0 auto;padding:1.25rem 1.5rem 2rem;font-family:Georgia,serif;line-height:1.8;color:#1a1a1a}
+.db-blog h1{display:none}.db-blog .hero-image,.db-blog figure.hero-image{display:none}
+.db-blog h2{font-size:1.25rem;font-weight:600;margin:1.75rem 0 .6rem;border-bottom:1px solid #f0f0f0;padding-bottom:.35rem}
+.db-blog h3{font-size:1rem;font-weight:600;margin:1.25rem 0 .4rem}
+.db-blog p{margin:0 0 1.1rem}
+.db-blog ul,.db-blog ol{margin:.75rem 0 1.25rem 1.5rem;padding:0}
+.db-blog li{margin-bottom:.4rem}
+.db-blog blockquote{border-left:4px solid #2d7a3e;margin:1.5rem 0;padding:.875rem 1.25rem;background:#f0f7f1;border-radius:0 6px 6px 0}
+.db-blog blockquote p{margin:0 0 .4rem;font-style:italic}
+.db-blog blockquote cite{font-size:.8rem;color:#666}
+.db-blog .cta-button,.db-blog a.cta-button{display:inline-block;background:#2d7a3e;color:#fff;padding:.75rem 1.5rem;border-radius:6px;text-decoration:none;font-weight:600;margin-top:.75rem}
+.db-blog .cta-section{background:#f0f7f1;border-radius:10px;padding:1.5rem;margin-top:2rem}
+.db-blog a{color:#2d7a3e;text-decoration:underline}
+.db-blog .inline-image,.db-blog figure.inline-image{margin:1.5rem auto;max-width:100%;display:block}
+.db-blog .inline-image img,.db-blog figure.inline-image img{width:100%;height:auto;border-radius:6px}
+.db-blog figcaption{text-align:center;font-size:.78rem;color:#777;margin-top:.4rem;font-style:italic}
+`
+
 // ─── Mini skeletons ───────────────────────────────────────────────────────────
 
 function MiniGridSkeleton({ type }: { type: 'video' | 'image' | 'blog' }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className={`grid gap-2 sm:gap-3 ${type === 'blog' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-4'}`}>
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="overflow-hidden rounded-xl border bg-white">
           <div
@@ -164,20 +185,20 @@ function MiniVideoCard({ item }: { item: VideoLibraryItem }) {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-3xl gap-0 p-0 overflow-hidden">
+        <DialogContent className="w-[95vw] gap-0 overflow-hidden p-0 sm:max-w-3xl">
           <div className="bg-black">
             <video
               src={item.video_url}
               controls
               autoPlay
               playsInline
-              className="w-full max-h-[65vh]"
+              className="max-h-[55vh] w-full sm:max-h-[65vh]"
             />
           </div>
-          <div className="flex items-start justify-between gap-4 p-4">
+          <div className="flex items-start justify-between gap-3 p-4">
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold text-gray-900">{item.topic}</h3>
-              <p className="mt-0.5 text-sm text-gray-500">
+              <h3 className="text-sm font-semibold text-gray-900 sm:text-base">{item.topic}</h3>
+              <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
                 {item.category} · {item.language}{duration ? ` · ${duration}s` : ''}
               </p>
             </div>
@@ -224,18 +245,18 @@ function MiniImageCard({ item }: { item: ImageLibraryItem }) {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-2xl gap-0 p-0 overflow-hidden">
-          <div className="flex max-h-[70vh] items-center justify-center overflow-hidden bg-gray-100">
+        <DialogContent className="w-[95vw] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <div className="flex max-h-[60vh] items-center justify-center overflow-hidden bg-gray-100">
             <img
               src={item.image_url}
               alt={item.topic}
-              className="max-h-[70vh] max-w-full object-contain"
+              className="max-h-[60vh] max-w-full object-contain"
             />
           </div>
-          <div className="flex items-start justify-between gap-4 p-4">
+          <div className="flex items-start justify-between gap-3 p-4">
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold text-gray-900">{item.topic}</h3>
-              <p className="mt-0.5 text-sm text-gray-500">{item.category} · {item.language}</p>
+              <h3 className="text-sm font-semibold text-gray-900 sm:text-base">{item.topic}</h3>
+              <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">{item.category} · {item.language}</p>
             </div>
             <a href={item.image_url} download={filename}>
               <Button size="sm" variant="outline">
@@ -253,20 +274,28 @@ function MiniImageCard({ item }: { item: ImageLibraryItem }) {
 
 function MiniBlogCard({ item }: { item: BlogLibraryItem }) {
   const [open, setOpen] = useState(false)
-  const title   = item.output_data?.title ?? item.topic
-  const excerpt = item.output_data?.excerpt ?? item.output_data?.content?.slice(0, 120) ?? null
-  const tags    = item.output_data?.tags ?? []
-  const content = item.output_data?.content ?? null
+
+  const od      = item.output_data
+  const title   = od?.post_title   ?? od?.title   ?? item.topic
+  const excerpt = od?.post_excerpt ?? od?.excerpt  ?? od?.content?.slice(0, 130) ?? null
+  const tags    = od?.tags ?? []
+  const heroUrl = od?.hero_image_url ?? od?.images?.hero?.url ?? null
+  const readTime = od?.seo?.estimated_read_time ?? null
+
+  // Prefer rendered HTML, then plain text fallback
+  const htmlFinal  = od?.html_final    ?? od?.post_content ?? null
+  const textFallback = od?.content ?? null
+  const hasContent = !!(htmlFinal || textFallback || item.file_url)
 
   return (
     <>
       <Card
-        className="cursor-pointer border bg-white shadow-sm transition-all hover:shadow-md"
-        onClick={() => (content || item.file_url) ? setOpen(true) : undefined}
+        className={`border bg-white shadow-sm transition-all hover:shadow-md${hasContent ? ' cursor-pointer' : ''}`}
+        onClick={() => { if (hasContent) setOpen(true) }}
       >
         <CardContent className="space-y-2 p-3">
           <div className="flex items-start gap-2">
-            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-amber-50 border border-amber-100">
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-amber-100 bg-amber-50">
               <BookOpen className="h-3.5 w-3.5 text-amber-600" />
             </div>
             <div className="min-w-0">
@@ -291,20 +320,43 @@ function MiniBlogCard({ item }: { item: BlogLibraryItem }) {
         </CardContent>
       </Card>
 
-      {content && (
+      {hasContent && (
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-2xl gap-0 p-0 overflow-hidden">
-            <div className="border-b p-5 pb-3">
-              <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-              <p className="mt-0.5 text-sm text-gray-500">
-                {item.category} · {item.language}
+          <DialogContent className="flex max-h-[92vh] w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+            <style dangerouslySetInnerHTML={{ __html: BLOG_CSS }} />
+
+            {/* Header */}
+            <div className="shrink-0 border-b p-4 sm:p-5">
+              {heroUrl && (
+                <img
+                  src={heroUrl}
+                  alt={title}
+                  className="mb-3 h-40 w-full rounded-lg object-cover"
+                />
+              )}
+              <h2 className="text-base font-bold leading-snug text-gray-900 sm:text-lg">{title}</h2>
+              <p className="mt-1 text-xs text-gray-500 sm:text-sm">
+                {item.category} · {item.language}{readTime ? ` · ${readTime} read` : ''}
               </p>
             </div>
-            <div className="max-h-[55vh] overflow-y-auto p-5">
-              <p className="whitespace-pre-wrap text-sm leading-7 text-gray-800">{content}</p>
+
+            {/* Body */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {htmlFinal ? (
+                <div
+                  className="db-blog"
+                  dangerouslySetInnerHTML={{ __html: htmlFinal }}
+                />
+              ) : textFallback ? (
+                <div className="p-4 sm:p-5">
+                  <p className="whitespace-pre-wrap text-sm leading-7 text-gray-800">{textFallback}</p>
+                </div>
+              ) : null}
             </div>
+
+            {/* Footer */}
             {item.file_url && (
-              <div className="flex justify-end border-t p-4">
+              <div className="flex shrink-0 justify-end border-t p-4">
                 <a href={item.file_url} target="_blank" rel="noopener noreferrer">
                   <Button size="sm" variant="outline">
                     <ExternalLink className="mr-1.5 h-3.5 w-3.5" />Open Post
@@ -357,14 +409,15 @@ export default function DashboardPage() {
   const hasAnyContent = videos.length > 0 || images.length > 0 || blogs.length > 0
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <TopBar
         title="Dashboard"
         breadcrumbs={[{ label: 'Fresh-CAN Studio' }, { label: 'Dashboard' }]}
         actions={
           <Button
             onClick={() => router.push('/dashboard/new')}
-            className="bg-green-600 hover:bg-green-700"
+            className="w-full bg-green-600 hover:bg-green-700 sm:w-auto"
+            size="sm"
           >
             <PlusCircle className="mr-2 h-4 w-4" />
             Create New Content
@@ -379,7 +432,7 @@ export default function DashboardPage() {
       {loading ? (
         <KPIRowSkeleton />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           <KPICard
             title="Total Jobs"
             value={kpi?.total_jobs ?? 0}
@@ -430,7 +483,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Recent Content ──────────────────────────────────────────────────── */}
-      <div className="space-y-7">
+      <div className="space-y-6 sm:space-y-7">
 
         {/* ── Videos ── */}
         <div className="space-y-3">
@@ -445,11 +498,11 @@ export default function DashboardPage() {
             <MiniGridSkeleton type="video" />
           ) : videos.length === 0 ? (
             <SectionEmpty
-              message="No videos generated yet — approve a script to get started"
+              message="No videos yet — approve a script to get started"
               onAction={() => router.push('/dashboard/new')}
             />
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
               {videos.map((v) => <MiniVideoCard key={v.id} item={v} />)}
             </div>
           )}
@@ -468,11 +521,11 @@ export default function DashboardPage() {
             <MiniGridSkeleton type="image" />
           ) : images.length === 0 ? (
             <SectionEmpty
-              message="No images generated yet — create an image post request"
+              message="No images yet — create an image post request"
               onAction={() => router.push('/dashboard/new')}
             />
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
               {images.map((v) => <MiniImageCard key={v.id} item={v} />)}
             </div>
           )}
@@ -491,11 +544,11 @@ export default function DashboardPage() {
             <MiniGridSkeleton type="blog" />
           ) : blogs.length === 0 ? (
             <SectionEmpty
-              message="No blog posts generated yet — create a blog post request"
+              message="No blog posts yet — create a blog post request"
               onAction={() => router.push('/dashboard/new')}
             />
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
               {blogs.map((v) => <MiniBlogCard key={v.id} item={v} />)}
             </div>
           )}
