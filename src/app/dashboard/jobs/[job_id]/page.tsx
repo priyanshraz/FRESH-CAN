@@ -1164,10 +1164,8 @@ export default function JobDetailPage() {
 
   // ── Reload drafts from DB ────────────────────────────────────────────────────
   // Called by realtime handler AND by the polling interval.
-  // Returns true while any draft is still pending (caller can decide what to do).
 
   const reloadDrafts = useCallback(async () => {
-    // Fetch drafts and also check the latest job status from DB
     const [{ data: draftRows }, { data: freshJob }] = await Promise.all([
       supabase
         .from('content_drafts')
@@ -1181,21 +1179,8 @@ export default function JobDetailPage() {
         .single(),
     ])
 
-    // Update job status from DB — catches transitions that realtime missed
     if (freshJob) {
-      const freshStatus = (freshJob as ContentJob).status
-      setJob((prev) => {
-        if (!prev) return prev
-        if (prev.status !== freshStatus) {
-          // If video was generating and is now ready, navigate
-          if (prev.status === 'generating' && freshStatus === 'ready') {
-            updateJob(job_id, { status: 'completed', progress: 100 })
-            router.push(`/dashboard/jobs/${job_id}/social`)
-          }
-          return { ...prev, status: freshStatus }
-        }
-        return prev
-      })
+      setJob(freshJob as ContentJob)
     }
 
     if (!draftRows) return
@@ -1222,9 +1207,10 @@ export default function JobDetailPage() {
     setRegenLoading((prev) => {
       if (prev === null) return null
       const d = draftMap.get(prev)
-      return (!d || d.status === 'draft_ready' || d.status === 'approved') ? null : prev
+      const isReady = d && (d.status === 'draft_ready' || d.status === 'approved' || (d.status === 'pending' && freshJob?.status === 'draft_ready'))
+      return isReady ? null : prev
     })
-  }, [job_id, router, updateJob])
+  }, [job_id])
 
   // ── Initial load ──────────────────────────────────────────────────────────────
 
@@ -1296,7 +1282,7 @@ export default function JobDetailPage() {
     }
 
     setLoading(false)
-  }, [job_id, router, updateJob])
+  }, [job_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -1323,10 +1309,27 @@ export default function JobDetailPage() {
         setRegenLoading(null)
         return
       }
+
+      // Always reload drafts from content_drafts table
       await reloadDrafts()
 
-      // During generating state, also check generated_content for video completion
+      // During generating/approved state, also check job status + generated_content
       if (isGeneratingState) {
+        // Check if job status changed in DB (realtime might have missed it)
+        const { data: freshJob } = await supabase
+          .from('content_jobs')
+          .select('status')
+          .eq('id', job_id)
+          .single()
+
+        if (freshJob?.status === 'ready') {
+          setJob((prev) => prev ? { ...prev, status: 'ready' } : prev)
+          updateJob(job_id, { status: 'completed', progress: 100 })
+          router.push(`/dashboard/jobs/${job_id}/social`)
+          return
+        }
+
+        // Also check generated_content for video completion
         const { data: videoContent } = await supabase
           .from('generated_content')
           .select('id, file_url')
@@ -1336,7 +1339,6 @@ export default function JobDetailPage() {
           .maybeSingle()
 
         if (videoContent) {
-          // Video generation completed — update local state and navigate
           setJob((prev) => prev ? { ...prev, status: 'ready' } : prev)
           updateJob(job_id, { status: 'completed', progress: 100 })
           router.push(`/dashboard/jobs/${job_id}/social`)
@@ -1346,7 +1348,7 @@ export default function JobDetailPage() {
 
     const id = setInterval(poll, pollInterval)
     return () => { active = false; clearInterval(id) }
-  }, [needsPolling, timedOut, reloadDrafts, job?.status, job_id, router])
+  }, [needsPolling, timedOut, reloadDrafts, job?.status, job_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Blog wait progress — persist start time across navigation ────────────────
 
@@ -1789,7 +1791,7 @@ export default function JobDetailPage() {
     }
 
     // ── video / blog: wait until content_drafts row exists and is not pending ──────────────
-    const isPendingStatus = draft?.status === 'pending'
+    const isPendingStatus = draft?.status === 'pending' && job?.status === 'pending'
     if (!draft || isRegenPending || isPendingStatus) {
       return (
         <WaitingCard
@@ -1928,7 +1930,7 @@ export default function JobDetailPage() {
   const activeDraft    = allDrafts.get(activeTab)
   const tabApproved    = approvedTypes.has(activeTab)
   const videoGenerating = activeTab === 'video' && isGenerating
-  const activeTabReady  = activeTab === 'image_post' ? !!imageResult : (!!activeDraft && activeDraft.status !== 'pending')
+  const activeTabReady  = activeTab === 'image_post' ? !!imageResult : (!!activeDraft && (activeDraft.status !== 'pending' || job?.status === 'draft_ready'))
   const showActionBar  =
     activeTabReady &&
     !videoGenerating &&
@@ -1991,8 +1993,8 @@ export default function JobDetailPage() {
             {contentTypes.map((type) => {
               const d = allDrafts.get(type)
               const imgReady = type === 'image_post' && !!imageResult
-              const isPending = type === 'image_post' ? imagePolling : (regenLoading === type || d?.status === 'pending')
-              const isDraftReady = type === 'image_post' ? imgReady : d?.status === 'draft_ready'
+              const isPending = type === 'image_post' ? imagePolling : (regenLoading === type || (d?.status === 'pending' && job?.status === 'pending'))
+              const isDraftReady = type === 'image_post' ? imgReady : (d?.status === 'draft_ready' || (d?.status === 'pending' && job?.status === 'draft_ready'))
               return (
                 <TabsTrigger key={type} value={type} className="gap-1.5">
                   {TYPE_ICONS[type]}
