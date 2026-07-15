@@ -1113,7 +1113,7 @@ export default function JobDetailPage() {
   const { job_id } = useParams<{ job_id: string }>()
   const router = useRouter()
 
-  const { addJob } = useContentJobStore()
+  const { addJob, updateJob } = useContentJobStore()
   const { clearAfterApproval } = useNewContentStore()
 
   const [loading, setLoading]     = useState(true)
@@ -1155,6 +1155,10 @@ export default function JobDetailPage() {
       // image_post is polled separately via generated_content — exclude here
       return types.filter((t) => t !== 'image_post').some((t) => !allDrafts.has(t))
     }
+    // Also poll when video is generating/approved — realtime can miss the completion event
+    if (job && (job.status === 'generating' || job.status === 'approved')) {
+      return true
+    }
     return false
   }, [regenLoading, job, allDrafts])
 
@@ -1163,11 +1167,36 @@ export default function JobDetailPage() {
   // Returns true while any draft is still pending (caller can decide what to do).
 
   const reloadDrafts = useCallback(async () => {
-    const { data: draftRows } = await supabase
-      .from('content_drafts')
-      .select('*')
-      .eq('job_id', job_id)
-      .order('created_at', { ascending: true })
+    // Fetch drafts and also check the latest job status from DB
+    const [{ data: draftRows }, { data: freshJob }] = await Promise.all([
+      supabase
+        .from('content_drafts')
+        .select('*')
+        .eq('job_id', job_id)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('content_jobs')
+        .select('*')
+        .eq('id', job_id)
+        .single(),
+    ])
+
+    // Update job status from DB — catches transitions that realtime missed
+    if (freshJob) {
+      const freshStatus = (freshJob as ContentJob).status
+      setJob((prev) => {
+        if (!prev) return prev
+        if (prev.status !== freshStatus) {
+          // If video was generating and is now ready, navigate
+          if (prev.status === 'generating' && freshStatus === 'ready') {
+            updateJob(job_id, { status: 'completed', progress: 100 })
+            router.push(`/dashboard/jobs/${job_id}/social`)
+          }
+          return { ...prev, status: freshStatus }
+        }
+        return prev
+      })
+    }
 
     if (!draftRows) return
 
@@ -1195,7 +1224,7 @@ export default function JobDetailPage() {
       const d = draftMap.get(prev)
       return (!d || d.status === 'draft_ready' || d.status === 'approved') ? null : prev
     })
-  }, [job_id])
+  }, [job_id, router, updateJob])
 
   // ── Initial load ──────────────────────────────────────────────────────────────
 
@@ -1243,34 +1272,81 @@ export default function JobDetailPage() {
 
     if (imgRow) setImageResult(imgRow as ImagePostResult)
 
+    // Check if job is stuck at 'generating' but video is already done
+    if (j.status === 'generating' && (j.content_types as ContentType[]).includes('video')) {
+      const { data: videoContent } = await supabase
+        .from('generated_content')
+        .select('id, file_url')
+        .eq('job_id', job_id)
+        .eq('content_type', 'video')
+        .not('file_url', 'is', null)
+        .maybeSingle()
+
+      if (videoContent) {
+        // Video is ready but status wasn't updated — fix it and navigate
+        await supabase.from('content_jobs')
+          .update({ status: 'ready', updated_at: new Date().toISOString() })
+          .eq('id', job_id)
+        setJob({ ...j, status: 'ready' })
+        updateJob(job_id, { status: 'completed', progress: 100 })
+        setLoading(false)
+        router.push(`/dashboard/jobs/${job_id}/social`)
+        return
+      }
+    }
+
     setLoading(false)
-  }, [job_id])
+  }, [job_id, router, updateJob])
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ── Polling: keep checking DB while any draft is still 'pending' ──────────────
+  // ── Polling: keep checking DB while drafts are pending OR video is generating ──
   // n8n updates content_jobs.status before it writes the draft, so the realtime
   // handler fires too early. This poll catches the window between those two events.
+  // Also polls during 'generating' state to catch video completion if realtime misses it.
 
   useEffect(() => {
     if (!needsPolling || timedOut) return
 
+    const isGeneratingState = job?.status === 'generating' || job?.status === 'approved'
     const startedAt = Date.now()
+    // Allow longer timeout for video generation (10 min) vs draft generation (3 min)
+    const timeoutMs = isGeneratingState ? 10 * 60 * 1000 : 3 * 60 * 1000
+    // Poll less frequently during generation (every 8s) vs draft waiting (every 4s)
+    const pollInterval = isGeneratingState ? 8000 : 4000
     let active = true
 
     const poll = async () => {
       if (!active) return
-      if (Date.now() - startedAt > 3 * 60 * 1000) {
+      if (Date.now() - startedAt > timeoutMs) {
         setTimedOut(true)
         setRegenLoading(null)
         return
       }
       await reloadDrafts()
+
+      // During generating state, also check generated_content for video completion
+      if (isGeneratingState) {
+        const { data: videoContent } = await supabase
+          .from('generated_content')
+          .select('id, file_url')
+          .eq('job_id', job_id)
+          .eq('content_type', 'video')
+          .not('file_url', 'is', null)
+          .maybeSingle()
+
+        if (videoContent) {
+          // Video generation completed — update local state and navigate
+          setJob((prev) => prev ? { ...prev, status: 'ready' } : prev)
+          updateJob(job_id, { status: 'completed', progress: 100 })
+          router.push(`/dashboard/jobs/${job_id}/social`)
+        }
+      }
     }
 
-    const id = setInterval(poll, 4000)
+    const id = setInterval(poll, pollInterval)
     return () => { active = false; clearInterval(id) }
-  }, [needsPolling, timedOut, reloadDrafts])
+  }, [needsPolling, timedOut, reloadDrafts, job?.status, job_id, router])
 
   // ── Blog wait progress — persist start time across navigation ────────────────
 
@@ -1399,6 +1475,7 @@ export default function JobDetailPage() {
           if (updated.status === 'draft_ready') reloadDrafts()
 
           if (updated.status === 'ready') {
+            updateJob(job_id, { status: 'completed', progress: 100 })
             router.push(`/dashboard/jobs/${job_id}/social`)
           }
         },
