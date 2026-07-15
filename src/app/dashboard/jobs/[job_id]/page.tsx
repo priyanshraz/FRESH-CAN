@@ -200,13 +200,59 @@ function blogEditFromDraft(data: Record<string, unknown>): BlogEditState {
   }
 }
 
+function generateBlogHTML(edit: BlogEditState): string {
+  let html = `<h1>${edit.post_title}</h1>\n`
+  if (edit.images.hero.url) {
+    html += `<img src="${edit.images.hero.url}" alt="${edit.images.hero.alt}" />\n`
+  }
+  if (edit.intro) {
+    html += `<p>${edit.intro}</p>\n`
+  }
+  for (const sec of edit.sections) {
+    if (sec.heading) html += `<h2>${sec.heading}</h2>\n`
+    if (sec.has_inline_image && edit.images.inline.url) {
+      html += `<img src="${edit.images.inline.url}" alt="${edit.images.inline.alt}" />\n`
+    }
+    for (const h3 of sec.h3s) {
+      html += `<h3>${h3}</h3>\n`
+    }
+    for (const p of sec.paragraphs) {
+      html += `<p>${p}</p>\n`
+    }
+    if (sec.list_items.length > 0) {
+      html += `<ul>\n`
+      for (const li of sec.list_items) {
+        html += `<li>${li}</li>\n`
+      }
+      html += `</ul>\n`
+    }
+    if (sec.blockquote?.text) {
+      html += `<blockquote>\n<p>${sec.blockquote.text}</p>\n`
+      if (sec.blockquote.cite) {
+        html += `<cite>${sec.blockquote.cite}</cite>\n`
+      }
+      html += `</blockquote>\n`
+    }
+  }
+  if (edit.conclusion) {
+    html += `<h2>Conclusion</h2>\n<p>${edit.conclusion}</p>\n`
+  }
+  if (edit.cta.heading || edit.cta.text) {
+    html += `<h2>${edit.cta.heading}</h2>\n<p>${edit.cta.text}</p>\n`
+    if (edit.cta.button_url && edit.cta.button_label) {
+      html += `<a href="${edit.cta.button_url}">${edit.cta.button_label}</a>\n`
+    }
+  }
+  return html
+}
+
 function blogEditToDraftData(edit: BlogEditState): Record<string, unknown> {
   return {
     post_title:   edit.post_title,
     post_slug:    edit.post_slug,
     post_status:  edit.post_status,
     generated_at: edit.generated_at,
-    html_final:   edit.html_final ?? undefined,
+    html_final:   generateBlogHTML(edit),
     seo:          { ...edit.seo, slug: edit.post_slug },
     content: {
       introduction: edit.intro,
@@ -380,6 +426,7 @@ function WaitingCard({
   isRegenerating,
   timedOut = false,
   onRefresh,
+  onRetryWithInput,
   startedAt,
 }: {
   type: ContentType
@@ -387,6 +434,7 @@ function WaitingCard({
   isRegenerating: boolean
   timedOut?: boolean
   onRefresh?: () => void
+  onRetryWithInput?: () => void
   startedAt?: number | null
 }) {
   const [progress, setProgress] = useState(0)
@@ -415,13 +463,24 @@ function WaitingCard({
               Check back in a moment or try refreshing.
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={onRefresh ?? (() => window.location.reload())}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh Page
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button
+              variant="outline"
+              onClick={onRefresh ?? (() => window.location.reload())}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh Page
+            </Button>
+            {onRetryWithInput && (
+              <Button
+                onClick={onRetryWithInput}
+                className="bg-gray-900 hover:bg-gray-800 text-white"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Retry with Instructions
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     )
@@ -1637,6 +1696,7 @@ export default function JobDetailPage() {
             isRegenerating={isRegenPending}
             timedOut={false}
             onRefresh={() => loadData()}
+            onRetryWithInput={() => setRegenDialog({ open: true, type })}
           />
         )
       }
@@ -1651,8 +1711,9 @@ export default function JobDetailPage() {
       )
     }
 
-    // ── video / blog: wait until content_drafts row exists ───────────────────
-    if (!draft || isRegenPending) {
+    // ── video / blog: wait until content_drafts row exists and is not pending ──────────────
+    const isPendingStatus = draft?.status === 'pending'
+    if (!draft || isRegenPending || isPendingStatus) {
       return (
         <WaitingCard
           type={type}
@@ -1664,6 +1725,7 @@ export default function JobDetailPage() {
             setRegenLoading(null)
             loadData()
           }}
+          onRetryWithInput={() => setRegenDialog({ open: true, type })}
           startedAt={type === 'blog' ? blogWaitStart : null}
         />
       )
@@ -1789,10 +1851,9 @@ export default function JobDetailPage() {
   const activeDraft    = allDrafts.get(activeTab)
   const tabApproved    = approvedTypes.has(activeTab)
   const videoGenerating = activeTab === 'video' && isGenerating
-  const activeTabReady  = activeTab === 'image_post' ? !!imageResult : !!activeDraft
+  const activeTabReady  = activeTab === 'image_post' ? !!imageResult : (!!activeDraft && activeDraft.status !== 'pending')
   const showActionBar  =
     activeTabReady &&
-    !tabApproved &&
     !videoGenerating &&
     regenLoading !== activeTab &&
     approving !== activeTab
@@ -1930,12 +1991,12 @@ export default function JobDetailPage() {
       )}
 
       {/* Approved state bar — shown after approval for non-generating types */}
-      {tabApproved && !isGenerating && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-green-200 bg-green-50/95 px-4 py-3 backdrop-blur-sm md:left-64">
+      {tabApproved && (
+        <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-green-200 bg-green-50/95 px-4 py-3 backdrop-blur-sm md:left-64 mb-16 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
           <div className="mx-auto flex max-w-4xl items-center justify-center gap-2 text-sm text-green-700">
             <CheckCircle2 className="h-4 w-4 text-green-500" />
             <span className="font-medium">{TYPE_LABELS[activeTab]} approved</span>
-            <span className="text-green-600">· Sent to n8n for generation</span>
+            <span className="text-green-600">· Edits will be saved automatically</span>
           </div>
         </div>
       )}
