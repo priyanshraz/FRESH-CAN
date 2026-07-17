@@ -4,9 +4,9 @@ import { createSessionToken, SESSION_COOKIE } from '@/lib/auth'
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7 // 7 days
 
 export async function POST(req: NextRequest) {
-  const validId = process.env.DASHBOARD_LOGIN_ID
-  const validPassword = process.env.DASHBOARD_LOGIN_PASSWORD
-  const secret = process.env.AUTH_SECRET
+  const validId = process.env.DASHBOARD_LOGIN_ID?.trim()
+  const validPassword = process.env.DASHBOARD_LOGIN_PASSWORD?.trim()
+  const secret = process.env.AUTH_SECRET?.trim()
 
   if (!validId || !validPassword || !secret) {
     return NextResponse.json({ error: 'Login is not configured on the server' }, { status: 500 })
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
 
-  if (body.id !== validId || body.password !== validPassword) {
+  if (body.id?.trim() !== validId || body.password?.trim() !== validPassword) {
     return NextResponse.json({ error: 'Invalid ID or password' }, { status: 401 })
   }
 
