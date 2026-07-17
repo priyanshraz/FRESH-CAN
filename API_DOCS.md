@@ -8,7 +8,7 @@
 |-------|-------|
 | **Base URL (Local)** | `http://localhost:3000/api` |
 | **Base URL (Production)** | TBD |
-| **Auth Method** | None (internal tool) |
+| **Auth Method** | Fixed ID/password login, HMAC-signed `fc_session` cookie (see below) |
 | **Response Format** | JSON |
 
 ---
@@ -28,6 +28,30 @@
 ---
 
 ## Endpoints
+
+---
+
+### Auth
+
+#### `POST /api/auth/login`
+**Auth:** No (this IS the login)
+**Description:** Checks credentials against `DASHBOARD_LOGIN_ID` / `DASHBOARD_LOGIN_PASSWORD` env vars. On success, sets an httpOnly `fc_session` cookie (HMAC-signed, 7-day expiry, signed with `AUTH_SECRET`).
+
+**Request Body:**
+```json
+{ "id": "string", "password": "string" }
+```
+
+**Response (success):** `{ "ok": true }` — Status 200, `Set-Cookie: fc_session=...`
+**Response (error):** `{ "error": "Invalid ID or password" }` — Status 401
+`{ "error": "Login is not configured on the server" }` — Status 500 (missing env vars)
+
+#### `POST /api/auth/logout`
+**Auth:** Requires existing session
+**Description:** Clears the `fc_session` cookie.
+**Response:** `{ "ok": true }`
+
+**Note:** All routes and pages except `/login`, `/api/auth/*`, and `/api/webhooks/*` are gated by `src/proxy.ts`, which redirects unauthenticated requests to `/login?next=<original path>`.
 
 ---
 
@@ -137,3 +161,5 @@ These are fired from the frontend — documented here for reference.
 | Date | Change | Endpoint |
 |------|--------|----------|
 | 2026-06-15 | Created | POST /api/webhooks/n8n-callback |
+| 2026-07-17 | Created | POST /api/auth/login |
+| 2026-07-17 | Created | POST /api/auth/logout |

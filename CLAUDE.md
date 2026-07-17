@@ -32,7 +32,7 @@
 | **Database** | Supabase (PostgreSQL) | project: `jbrktjnscnzmhwupojiu` |
 | **API** | Next.js API Routes (REST) | |
 | **Automation** | n8n webhooks | 3 webhook URLs |
-| **Auth** | None (internal tool) | |
+| **Auth** | Fixed ID/password, HMAC-signed session cookie | `src/proxy.ts` gates all routes; login at `/login` |
 
 ---
 

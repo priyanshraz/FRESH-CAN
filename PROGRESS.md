@@ -127,3 +127,38 @@
 - Add `N8N_IMAGE_APPROVE_WEBHOOK` and `N8N_BLOG_APPROVE_WEBHOOK` to `.env.local`
 - Configure n8n webhooks for image_approve and blog_approve flows
 - End-to-end test: create job → wait for drafts → regenerate with instructions → approve each type
+
+---
+
+### Session 4 — 2026-07-17
+**Developer:** Pri
+**Tool:** ✅ Claude Code CLI
+
+**✅ Completed**
+- **Dashboard login** — fixed ID/password gate for the whole app (was previously "no auth, internal tool")
+- `src/lib/auth.ts` — HMAC-SHA256 signed session tokens (Web Crypto, edge/node compatible), no external deps
+- `POST /api/auth/login` — checks `DASHBOARD_LOGIN_ID` / `DASHBOARD_LOGIN_PASSWORD`, sets httpOnly `fc_session` cookie (7-day expiry)
+- `POST /api/auth/logout` — clears the session cookie
+- `src/proxy.ts` (Next.js 16's replacement for `middleware.ts`) — gates every route except `/api/auth/*` and the inbound `/api/webhooks/*` (n8n needs unauthenticated access), redirects unauthenticated visitors to `/login?next=...`, redirects already-authenticated visitors away from `/login`
+- `/login` page — simple ID/password form using existing ShadCN Button/Input
+- Logout button added to `Sidebar` footer
+- Added env vars: `DASHBOARD_LOGIN_ID`, `DASHBOARD_LOGIN_PASSWORD`, `AUTH_SECRET` (to `.env.local` + `.env.example`)
+- Verified end-to-end with curl: unauth redirect, wrong creds → 401, correct creds → cookie set, cookie grants dashboard access, authenticated visit to `/login` bounces to `/dashboard`, logout clears session, n8n callback route still reachable without auth
+- `npm run build` passes clean (no middleware deprecation warning after switching to `proxy.ts`)
+
+**📁 Files Changed**
+- `src/lib/auth.ts` (new)
+- `src/app/api/auth/login/route.ts` (new)
+- `src/app/api/auth/logout/route.ts` (new)
+- `src/proxy.ts` (new)
+- `src/app/login/page.tsx` (new)
+- `src/components/layout/Sidebar.tsx` (added logout button)
+- `.env.local`, `.env.example` (added auth env vars)
+
+**💡 Decisions Made**
+- Fixed credentials come from env vars, not a database table — matches "internal tool, single fixed ID/password" ask rather than building out a users table
+- Session cookie is a self-signed HMAC token (expiry + signature), not a random opaque ID — no session store needed, verification works in both Edge and Node runtimes
+
+**⭐ Pick Up Next Session**
+- Update `CLAUDE.md` / `API_DOCS.md` "Auth Method" if a real user-based auth system replaces this later
+- Consider rate-limiting `/api/auth/login` if this is ever exposed beyond trusted internal users

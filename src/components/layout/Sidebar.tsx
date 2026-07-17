@@ -1,11 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   PlusCircle,
   Library,
+  LogOut,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -38,9 +39,16 @@ const navItems = [
 
 export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
 
   const isActive = (href: string, exact: boolean) =>
     exact ? pathname === href : pathname.startsWith(href)
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
+    router.refresh()
+  }
 
   return (
     <>
@@ -118,7 +126,14 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         </nav>
 
         {/* Footer */}
-        <div className="flex-shrink-0 border-t border-gray-200 p-4">
+        <div className="flex-shrink-0 space-y-2 border-t border-gray-200 p-4">
+          <button
+            onClick={handleLogout}
+            className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 hover:text-gray-900"
+          >
+            <LogOut className="h-4 w-4 flex-shrink-0 text-gray-400 group-hover:text-gray-600" />
+            Log out
+          </button>
           <div className="rounded-lg bg-green-50 px-3 py-2.5">
             <p className="text-xs font-semibold text-green-700">Fresh-CAN Brand</p>
             <p className="mt-0.5 text-[10px] text-green-600">AI Content Automation v1.0</p>
