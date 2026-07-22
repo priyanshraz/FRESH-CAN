@@ -38,11 +38,42 @@ interface FormData {
   video_duration:  string
   language:        Language
   content_types:   ContentType[]
+  province:        string
+  city:            string
 }
 
 type Phase = 'idle' | 'creating' | 'triggering'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+const VALID_PROVINCES = [
+  'British Columbia',
+  'Alberta',
+  'Saskatchewan',
+  'Manitoba',
+  'Ontario',
+  'Quebec',
+  'New Brunswick',
+  'Nova Scotia',
+  'Prince Edward Island',
+  'Newfoundland & Labrador',
+] as const
+
+type Province = typeof VALID_PROVINCES[number]
+
+const PROVINCES: { value: string; label: string }[] = [
+  { value: 'auto',                      label: 'Auto (Let AI Decide)' },
+  { value: 'British Columbia',          label: 'British Columbia' },
+  { value: 'Alberta',                   label: 'Alberta' },
+  { value: 'Saskatchewan',              label: 'Saskatchewan' },
+  { value: 'Manitoba',                  label: 'Manitoba' },
+  { value: 'Ontario',                   label: 'Ontario' },
+  { value: 'Quebec',                    label: 'Quebec' },
+  { value: 'New Brunswick',             label: 'New Brunswick' },
+  { value: 'Nova Scotia',               label: 'Nova Scotia' },
+  { value: 'Prince Edward Island',      label: 'Prince Edward Island' },
+  { value: 'Newfoundland & Labrador',   label: 'Newfoundland & Labrador' },
+]
 
 const CATEGORIES = [
   'Food Desert Education',
@@ -93,20 +124,35 @@ const CONTENT_TYPES: {
   },
 ]
 
+function buildLocationTargeting(province: string, city: string) {
+  if (!province || province === 'auto') {
+    return { mode: 'auto' as const, province: null, city: null }
+  }
+  // Whitelist check — silently fall back to auto if invalid value
+  const safeProvince: Province | null = (VALID_PROVINCES as readonly string[]).includes(province)
+    ? province as Province
+    : null
+  if (!safeProvince) return { mode: 'auto' as const, province: null, city: null }
+  const safeCity = city.trim() || null
+  return { mode: 'manual' as const, province: safeProvince, city: safeCity }
+}
+
 function buildPayload(
   jobId: string,
   form: FormData,
   type: ContentType,
 ): Record<string, unknown> {
+  const location_targeting = buildLocationTargeting(form.province, form.city)
   const base = {
-    job_id:          jobId,
-    topic:           form.topic,
-    keywords:        form.keywords,
-    category:        form.category,
-    target_audience: form.target_audience,
-    language:        form.language,
-    brand:           'Fresh-CAN',
-    content_type:    type,
+    job_id:              jobId,
+    topic:               form.topic,
+    keywords:            form.keywords,
+    category:            form.category,
+    target_audience:     form.target_audience,
+    language:            form.language,
+    brand:               'Fresh-CAN',
+    content_type:        type,
+    location_targeting,
   }
   if (type === 'video') {
     return { ...base, script_type: form.script_type, video_duration: form.video_duration }
@@ -131,7 +177,7 @@ export default function NewContentPage() {
 
   const {
     topic, keywords, category, target_audience, script_type, video_duration,
-    language, content_types, status, pendingJobId,
+    language, content_types, province, city, status, pendingJobId,
     restoreSession, setField, toggleType, startGeneration, clearOnCancel,
   } = useNewContentStore()
 
@@ -176,6 +222,7 @@ export default function NewContentPage() {
     const formSnapshot: FormData = {
       topic, keywords, category, target_audience,
       script_type, video_duration, language, content_types,
+      province, city,
     }
     const results = await Promise.allSettled(
       content_types.map(async (type) => {
@@ -316,6 +363,48 @@ export default function NewContentPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* ── Province / City targeting ─────────────────────────── */}
+            <div className="space-y-1.5">
+              <FL>Target Province / City</FL>
+              <Select
+                value={province}
+                onValueChange={(v) => {
+                  if (!v) return
+                  setField('province', v)
+                  if (v === 'auto') setField('city', '')
+                }}
+                disabled={isSubmitting}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PROVINCES.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-400">
+                {province === 'auto'
+                  ? 'AI will rotate across all Canadian provinces automatically'
+                  : 'Optionally specify a city for more targeted content'}
+              </p>
+            </div>
+
+            {/* City text input — slides in when a province is selected */}
+            <div
+              className={`space-y-1.5 overflow-hidden transition-all duration-200 ${
+                province !== 'auto' ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <FL htmlFor="city">City <span className="text-xs font-normal text-gray-400">(optional)</span></FL>
+              <Input
+                id="city"
+                value={city}
+                onChange={(e) => setField('city', e.target.value)}
+                placeholder="e.g. Winnipeg, Halifax, Regina…"
+                disabled={isSubmitting || province === 'auto'}
+              />
             </div>
 
             <div className="space-y-1.5">
